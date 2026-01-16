@@ -6,6 +6,8 @@ from api_client import APIClient
 
 def main():
     parser = argparse.ArgumentParser(description='API Testing Tool')
+    # First positional argument is the path the config file that should be used, defaulting to config.json
+    parser.add_argument('config', nargs='?', default='config.json', help='Path to configuration file')
     parser.add_argument('endpoint', help='Endpoint name to call')
     parser.add_argument('--body', help='Path to JSON body file')
     parser.add_argument('--params', help='Query parameters as JSON string')
@@ -15,7 +17,7 @@ def main():
 
     args = parser.parse_args()
 
-    client = APIClient()
+    client = APIClient(config_path=args.config)
 
     if args.collection:
         results = client.execute_collection(args.collection)
