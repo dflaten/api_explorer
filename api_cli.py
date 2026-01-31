@@ -47,10 +47,40 @@ def main():
         print(json.dumps(dict(response.headers), indent=2))
 
     print(f"\nResponse Body:")
+    response_text = None
     try:
-        print(json.dumps(response.json(), indent=2))
-    except:
-        print(response.text)
+        response_json = response.json()
+        print(json.dumps(response_json, indent=2))
+    except Exception:
+        response_json = None
+        response_text = response.text
+        print(response_text)
+
+    # Persist response to response.json
+    try:
+        with open("response.json", "w") as f:
+            if response_json is not None:
+                json.dump(response_json, f, indent=2)
+            else:
+                json.dump({"raw": response_text}, f, indent=2)
+            f.write("\n")
+    except Exception as e:
+        print(f"\nWarning: failed to write response.json: {e}")
+
+    # If token endpoint response contains access_token, persist it back to config
+    if isinstance(response_json, dict) and "access_token" in response_json:
+        try:
+            with open(args.config, 'r') as f:
+                config = json.load(f)
+            config.setdefault("auth", {})
+            config["auth"]["type"] = config.get("auth", {}).get("type", "bearer")
+            config["auth"]["token"] = response_json["access_token"]
+            with open(args.config, 'w') as f:
+                json.dump(config, f, indent=2)
+                f.write("\n")
+            print("\nUpdated auth token in config.")
+        except Exception as e:
+            print(f"\nWarning: failed to update config with access_token: {e}")
 
 
 if __name__ == '__main__':

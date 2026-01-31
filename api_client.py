@@ -47,9 +47,27 @@ class APIClient:
 
         endpoint = self.config['endpoints'][endpoint_name]
 
-        # Build full URL
-        base_url = self.config.get('base_url', '')
-        url = f"{base_url}{endpoint['path']}"
+        # Merge query parameters
+        request_params = endpoint.get('params', {}).copy()
+        if params:
+            request_params.update(params)
+
+        # Build full URL (allow per-endpoint override or absolute URL)
+        if 'url' in endpoint:
+            url = endpoint['url']
+        else:
+            base_url = endpoint.get('base_url', self.config.get('base_url', ''))
+            path = endpoint['path']
+            # Substitute {param} in path using request_params, and remove them from query params
+            if "{" in path and "}" in path:
+                path_params = {}
+                for key in list(request_params.keys()):
+                    token = "{" + key + "}"
+                    if token in path:
+                        path_params[key] = request_params.pop(key)
+                for key, value in path_params.items():
+                    path = path.replace("{" + key + "}", str(value))
+            url = f"{base_url}{path}"
 
         # Load request body if provided
         body = None
@@ -64,25 +82,32 @@ class APIClient:
         if headers:
             request_headers.update(headers)
 
-        # Merge query parameters
-        request_params = endpoint.get('params', {}).copy()
-        if params:
-            request_params.update(params)
-
         # Make request
         method = endpoint['method'].upper()
         # Print out the URL and parameters for debugging
-        print("Making request to URL:", url)
+        if request_params:
+            from urllib.parse import urlencode
+            full_url = f"{url}?{urlencode(request_params)}"
+        else:
+            full_url = url
+        print("Making request to URL:", full_url)
+
+        request_kwargs = {
+            "method": method,
+            "url": url,
+            "params": request_params if request_params else None,
+            "headers": request_headers if request_headers else None,
+            "timeout": self.config.get('timeout', 30),
+        }
         print("With parameters:", request_params)
 
-        response = self.session.request(
-            method=method,
-            url=url,
-            json=body if body else None,
-            params=request_params if request_params else None,
-            headers=request_headers if request_headers else None,
-            timeout=self.config.get('timeout', 30)
-        )
+        if body:
+            if endpoint.get("body_type") == "form":
+                request_kwargs["data"] = body
+            else:
+                request_kwargs["json"] = body
+
+        response = self.session.request(**request_kwargs)
 
         return response
 
@@ -118,4 +143,3 @@ class APIClient:
                 }
 
         return results
-
