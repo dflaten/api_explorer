@@ -1,7 +1,7 @@
 import json
 import requests
 from typing import Dict, Any, Optional
-from pathlib import Path
+from urllib.parse import urlencode
 
 
 class APIClient:
@@ -86,7 +86,6 @@ class APIClient:
         method = endpoint['method'].upper()
         # Print out the URL and parameters for debugging
         if request_params:
-            from urllib.parse import urlencode
             full_url = f"{url}?{urlencode(request_params)}"
         else:
             full_url = url

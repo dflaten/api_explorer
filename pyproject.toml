@@ -6,6 +6,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "requests>=2.31.0",
+  "urllib3>=2.6.3",
+  "idna>=3.11"
 ]
 
 [project.scripts]

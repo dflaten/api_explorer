@@ -85,3 +85,33 @@ Run a request:
 ```bash
 uv run api-cli get_users
 ```
+
+## Real Example
+
+Using `newsapi.org`, I created a file named `newsapi_config.json` with these contents:
+
+```json
+{
+  "base_url": "https://newsapi.org/v2/",
+  "timeout": 30,
+  "default_headers": {
+    "Content-Type": "application/json",
+    "X-API-KEY": "REDACTED"
+  },
+  "endpoints": {
+    "top_headlines": {
+      "method": "GET",
+      "path": "top-headlines",
+      "params": {
+        "country": "us"
+      }
+    }
+  }
+```
+
+Run a request:
+```bash
+uv run api-cli newsapi_config.json top_headlines
+```
+
+See the [documentation here](https://newsapi.org/docs/endpoints/top-headlines) for more details on the endpoint.
