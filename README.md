@@ -11,18 +11,11 @@ A lightweight Python CLI for exploring and testing HTTP APIs without reaching fo
 - 📦 Batch request execution with YAML collections
 - 💾 Response saving to `response.json` or a custom `--output` path
 - 🔑 Built-in auth support for bearer and basic auth
-- 🛠️ Fast local dev workflow with `pytest`, `ty`, `ruff`, and `make`
 
 ## Install
 
 ```bash
 uv sync
-```
-
-Install development tools:
-
-```bash
-uv sync --group dev
 ```
 
 ## Fast Start
@@ -144,40 +137,6 @@ Tips:
 
 Run `uv run api-cli --help` for command patterns and examples.
 
-## Development
-
-Run tests:
-
-```bash
-make test
-```
-
-Run type checking:
-
-```bash
-make typecheck
-```
-
-Run formatting:
-
-```bash
-make format
-```
-
-Run the full local sequence:
-
-```bash
-make check
-```
-
-Notes:
-
-- `make test` runs `pytest`
-- `make typecheck` runs `ty check`
-- `make format` runs `ruff format .`
-- `make check` runs `make format`, `make typecheck`, and `make test` in that order
-- `make check` modifies files because it formats before type checking and tests
-
 ## Config Format
 
 Each config file represents one API and is written in YAML. Keep separate files such as:
@@ -224,6 +183,18 @@ Notes:
 
 ## Real Example
 
+Create the local `.env` file and add your NewsAPI key:
+
+```bash
+cp .env.example .env
+```
+
+```dotenv
+NEWS_API_KEY=your_newsapi_key_here
+```
+
+Then add the API config:
+
 ```yaml
 base_url: https://newsapi.org/v2/
 timeout: 30
@@ -245,3 +216,43 @@ uv run api-cli newsapi top_headlines
 ```
 
 NewsAPI endpoint reference: https://newsapi.org/docs/endpoints/top-headlines
+
+## Development
+
+Install development tools:
+
+```bash
+uv sync --group dev
+```
+
+Run tests:
+
+```bash
+make test
+```
+
+Run type checking:
+
+```bash
+make typecheck
+```
+
+Run formatting:
+
+```bash
+make format
+```
+
+Run the full local sequence:
+
+```bash
+make check
+```
+
+Notes:
+
+- `make test` runs `pytest`
+- `make typecheck` runs `ty check`
+- `make format` runs `ruff format .`
+- `make check` runs `make format`, `make typecheck`, and `make test` in that order
+- `make check` modifies files because it formats before type checking and tests
