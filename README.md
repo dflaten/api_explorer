@@ -2,15 +2,16 @@
 
 A lightweight Python CLI for exploring and testing HTTP APIs without reaching for Postman. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
 
-## What Improved
+## Features
 
-- Easier first-run setup with `--init-config`
-- YAML-first one-config-per-API workflow with config aliases from `configs/`
-- Endpoint discovery with `--list` and `--describe`
-- JSON-shaped request preview with `--dry-run`
-- Safer config files with `${ENV_VAR}` expansion
-- Default-config flow that now works as documented: `uv run api-cli health`
-- Configurable response output path with `--output`
+- 📁 One YAML config per API, with alias-based selection from `configs/`
+- 🔍 JSON-shaped request previews with `--dry-run`
+- 🧭 Endpoint discovery with `--list` and `--describe`
+- 🔐 Local secret loading from `.env`
+- 📦 Batch request execution with YAML collections
+- 💾 Response saving to `response.json` or a custom `--output` path
+- 🔑 Built-in auth support for bearer and basic auth
+- 🛠️ Fast local dev workflow with `pytest`, `ty`, `ruff`, and `make`
 
 ## Install
 
@@ -18,13 +19,13 @@ A lightweight Python CLI for exploring and testing HTTP APIs without reaching fo
 uv sync
 ```
 
-## Fast Start
-
-Create a starter config:
+Install development tools:
 
 ```bash
-uv run api-cli --init-config config.yaml
+uv sync --group dev
 ```
+
+## Fast Start
 
 Create a named API config in the default config directory:
 
@@ -32,17 +33,13 @@ Create a named API config in the default config directory:
 uv run api-cli --init-config configs/github.yaml
 ```
 
-Set your token in the shell instead of the file:
+Create a local `.env` file from the example template:
 
 ```bash
-export API_TOKEN=your_token_here
+cp .env.example .env
 ```
 
-List endpoints in the default config:
-
-```bash
-uv run api-cli --list
-```
+Edit `.env` with the tokens or API keys referenced by your config.
 
 List available config files:
 
@@ -53,31 +50,25 @@ uv run api-cli --list-configs
 Describe an endpoint without sending anything:
 
 ```bash
-uv run api-cli --describe health
+uv run api-cli github --describe health
 ```
 
 Preview the exact request that would be sent:
 
 ```bash
-uv run api-cli health --dry-run
+uv run api-cli github health --dry-run
 ```
 
 Execute a request:
 
 ```bash
-uv run api-cli health
-```
-
-Use a non-default config file:
-
-```bash
-uv run api-cli newsapi.yaml top_headlines
-```
-
-Target a specific API by config alias:
-
-```bash
 uv run api-cli github health
+```
+
+Use an explicit config path:
+
+```bash
+uv run api-cli configs/newsapi.yaml top_headlines
 ```
 
 ## Set Up A New API
@@ -119,10 +110,10 @@ endpoints:
       id: "123"
 ```
 
-4. Export any secrets in your shell:
+4. Add secrets to `.env`:
 
-```bash
-export MY_API_KEY=your_key_here
+```dotenv
+MY_API_KEY=your_key_here
 ```
 
 5. Confirm the config is discoverable:
@@ -149,74 +140,43 @@ Tips:
 - Start with a simple `health`, `me`, or `list` endpoint before adding write operations.
 - Put large request payloads in separate JSON files and pass them with `--body`.
 - Use endpoint `description` fields so `--list` output stays readable.
+- Keep secrets in `.env`, not in the checked-in YAML config.
 
-## CLI Patterns
+Run `uv run api-cli --help` for command patterns and examples.
 
-Call an endpoint with the default `config.yaml`:
+## Development
 
-```bash
-uv run api-cli get_users
-```
-
-Call an endpoint with an explicit config:
+Run tests:
 
 ```bash
-uv run api-cli config.yaml get_users
+make test
 ```
 
-List endpoints from a specific config:
+Run type checking:
 
 ```bash
-uv run api-cli my_api.yaml --list
+make typecheck
 ```
 
-List configs from the default config directory:
+Run formatting:
 
 ```bash
-uv run api-cli --list-configs
+make format
 ```
 
-Call an endpoint using a config alias:
+Run the full local sequence:
 
 ```bash
-uv run api-cli github get_repo
+make check
 ```
 
-Use a custom config directory:
+Notes:
 
-```bash
-uv run api-cli --config-dir api_configs --list-configs
-```
-
-Describe an endpoint from a specific config:
-
-```bash
-uv run api-cli my_api.yaml --describe get_users
-```
-
-Override query params and headers:
-
-```bash
-uv run api-cli get_users --params '{"page": 2}' --headers '{"X-Debug": "true"}'
-```
-
-Send a request body from a file:
-
-```bash
-uv run api-cli create_user --body user.json
-```
-
-Write the response somewhere else:
-
-```bash
-uv run api-cli get_users --output tmp/users.json
-```
-
-Run a request collection:
-
-```bash
-uv run api-cli config.yaml --collection smoke_tests.yaml
-```
+- `make test` runs `pytest`
+- `make typecheck` runs `ty check`
+- `make format` runs `ruff format .`
+- `make check` runs `make format`, `make typecheck`, and `make test` in that order
+- `make check` modifies files because it formats before type checking and tests
 
 ## Config Format
 
@@ -253,11 +213,13 @@ endpoints:
 Notes:
 
 - `${API_TOKEN}` style placeholders are expanded from environment variables when the config loads.
+- `.env` is loaded automatically when the CLI starts, and existing shell variables win if both are set.
 - Use a YAML file for each API
 - Config aliases come from filenames inside `configs/` by default, so `configs/github.yaml` becomes `github`.
 - Path parameters such as `/users/{id}` are filled from the endpoint's `params` block or from `--params`.
 - Endpoint-level `headers`, `params`, and `body` are merged with CLI overrides.
-- If a response JSON object contains `access_token`, the tool updates that config file's bearer token.
+- If a response JSON object contains `access_token`, the tool updates the referenced `.env` variable when `auth.token` uses `${ENV_VAR}` syntax.
+- Multiple APIs can all return `access_token`; keep them separate by using different env vars such as `${GITHUB_TOKEN}` and `${SLACK_TOKEN}` in each config.
 - Request and response previews are JSON-shaped in CLI output for readability.
 
 ## Real Example
@@ -278,7 +240,6 @@ endpoints:
 ```
 
 ```bash
-export NEWS_API_KEY=REDACTED
 uv run api-cli newsapi --describe top_headlines
 uv run api-cli newsapi top_headlines
 ```

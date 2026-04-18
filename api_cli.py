@@ -1,5 +1,7 @@
 import argparse
 import json
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -51,6 +53,65 @@ SENSITIVE_HEADER_NAMES = {
     "x-api-key",
     "api-key",
 }
+
+ENV_TOKEN_PATTERN = re.compile(r"^\$\{([A-Z0-9_]+)\}$")
+
+
+HELP_EPILOG = """\
+Examples:
+  Create a new API config:
+    api-cli --init-config configs/github.yaml
+
+  See available API configs:
+    api-cli --list-configs
+
+  List endpoints for an API alias:
+    api-cli github --list
+
+  Describe an endpoint:
+    api-cli github --describe get_repo
+
+  Preview a request without sending it:
+    api-cli github get_repo --dry-run
+
+  Run a request with JSON overrides:
+    api-cli github get_repo --params '{"owner":"octocat"}'
+
+  Send a request body from a file:
+    api-cli github create_issue --body issue.json
+
+  Run a request collection:
+    api-cli github --collection smoke_tests.yaml
+
+Config workflow:
+  1. Put one YAML config per API in configs/
+  2. Put secrets in .env
+  3. Use the config filename as the CLI alias
+"""
+
+
+def load_env_file(env_path: str = ".env"):
+    path = Path(env_path)
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or key in os.environ:
+            continue
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ[key] = value
 
 
 def parse_json_argument(value: str, label: str):
@@ -106,12 +167,18 @@ def resolve_config_path(config_spec: str, config_dir: str):
 def resolve_config_and_endpoint(targets, collection_path, config_dir):
     if collection_path:
         if len(targets) > 1:
-            raise ValueError("Collection mode accepts at most one positional argument: [config]")
-        config_path = resolve_config_path(targets[0], config_dir) if targets else "config.yaml"
+            raise ValueError(
+                "Collection mode accepts at most one positional argument: [config]"
+            )
+        config_path = (
+            resolve_config_path(targets[0], config_dir) if targets else "config.yaml"
+        )
         return config_path, None
 
     if not targets:
-        raise ValueError("Provide an endpoint name, or use --list / --describe / --init-config")
+        raise ValueError(
+            "Provide an endpoint name, or use --list / --describe / --init-config"
+        )
 
     if len(targets) == 1:
         return "config.yaml", targets[0]
@@ -119,7 +186,9 @@ def resolve_config_and_endpoint(targets, collection_path, config_dir):
     if len(targets) == 2:
         return resolve_config_path(targets[0], config_dir), targets[1]
 
-    raise ValueError("Too many positional arguments. Use [endpoint] or [config endpoint]")
+    raise ValueError(
+        "Too many positional arguments. Use [endpoint] or [config endpoint]"
+    )
 
 
 def resolve_config_only(targets, config_dir):
@@ -189,7 +258,11 @@ def print_request_preview(request_definition):
     print(f"  Timeout: {request_kwargs['timeout']}s")
     if request_definition.get("effective_headers"):
         print("  Headers:")
-        print(json.dumps(redact_headers(request_definition["effective_headers"]), indent=2))
+        print(
+            json.dumps(
+                redact_headers(request_definition["effective_headers"]), indent=2
+            )
+        )
     if request_kwargs.get("params"):
         print("  Query Params:")
         print(json.dumps(request_kwargs["params"], indent=2))
@@ -210,6 +283,29 @@ def save_response(output_path: str, response_json, response_text: str):
         f.write("\n")
 
 
+def print_response(response, verbose: bool):
+    print(f"Status Code: {response.status_code}")
+    print(f"Success: {response.ok}")
+
+    if verbose:
+        print(f"\nResponse Headers:")
+        print(json.dumps(dict(response.headers), indent=2))
+
+
+def emit_response_body(response_body):
+    print(f"\nResponse Body:")
+    if isinstance(response_body, (dict, list)):
+        print(json.dumps(response_body, indent=2))
+        return response_body, None
+
+    if response_body is None:
+        print("null")
+        return None, None
+
+    print(response_body)
+    return None, response_body
+
+
 def redact_headers(headers):
     redacted = {}
     for key, value in headers.items():
@@ -220,32 +316,101 @@ def redact_headers(headers):
     return redacted
 
 
-def update_auth_token(config_path: str, access_token: str):
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f) or {}
-    config.setdefault("auth", {})
-    config["auth"]["type"] = config.get("auth", {}).get("type", "bearer")
-    config["auth"]["token"] = access_token
+def update_env_value(env_path: str, key: str, value: str):
+    path = Path(env_path)
+    lines = []
+    found = False
 
-    with open(config_path, 'w') as f:
-        yaml.safe_dump(config, f, sort_keys=False)
+    if path.exists():
+        lines = path.read_text().splitlines()
+
+    updated_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            updated_lines.append(line)
+            continue
+
+        content = stripped[7:].strip() if stripped.startswith("export ") else stripped
+        if "=" not in content:
+            updated_lines.append(line)
+            continue
+
+        existing_key, _ = content.split("=", 1)
+        if existing_key.strip() == key:
+            updated_lines.append(f"{key}={value}")
+            found = True
+        else:
+            updated_lines.append(line)
+
+    if not found:
+        if updated_lines:
+            updated_lines.append("")
+        updated_lines.append(f"{key}={value}")
+
+    path.write_text("\n".join(updated_lines) + "\n")
+
+
+def persist_access_token(config_path: str, access_token: str, env_path: str = ".env"):
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f) or {}
+
+    token_value = config.get("auth", {}).get("token")
+    if not isinstance(token_value, str):
+        raise ValueError("Config auth token is missing or not a string")
+
+    match = ENV_TOKEN_PATTERN.match(token_value)
+    if not match:
+        raise ValueError(
+            "Config auth token must use ${ENV_VAR} syntax to persist access_token into .env"
+        )
+
+    update_env_value(env_path, match.group(1), access_token)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='API Testing Tool')
-    parser.add_argument('targets', nargs='*', help='Use [endpoint], [config endpoint], or [config_alias endpoint]')
-    parser.add_argument('--body', help='Path to JSON body file')
-    parser.add_argument('--params', help='Query parameters as JSON string')
-    parser.add_argument('--headers', help='Additional headers as JSON string')
-    parser.add_argument('--collection', help='Execute collection file')
-    parser.add_argument('--config-dir', default='configs', help='Directory used for YAML config aliases')
-    parser.add_argument('--list-configs', action='store_true', help='List config files in the config directory')
-    parser.add_argument('--list', action='store_true', help='List configured endpoints')
-    parser.add_argument('--describe', metavar='ENDPOINT', help='Show endpoint details without executing')
-    parser.add_argument('--dry-run', action='store_true', help='Build and print the request without sending it')
-    parser.add_argument('--init-config', metavar='PATH', help='Create a starter YAML config file for a new API')
-    parser.add_argument('--output', default='response.json', help='Path to save the response body')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+    load_env_file()
+
+    parser = argparse.ArgumentParser(
+        description="CLI API explorer for YAML-defined API configs.",
+        epilog=HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        help="Use [endpoint], [config endpoint], or [config_alias endpoint]",
+    )
+    parser.add_argument("--body", help="Path to JSON body file")
+    parser.add_argument("--params", help="Query parameters as JSON string")
+    parser.add_argument("--headers", help="Additional headers as JSON string")
+    parser.add_argument("--collection", help="Execute collection file")
+    parser.add_argument(
+        "--config-dir", default="configs", help="Directory used for YAML config aliases"
+    )
+    parser.add_argument(
+        "--list-configs",
+        action="store_true",
+        help="List config files in the config directory",
+    )
+    parser.add_argument("--list", action="store_true", help="List configured endpoints")
+    parser.add_argument(
+        "--describe", metavar="ENDPOINT", help="Show endpoint details without executing"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build and print the request without sending it",
+    )
+    parser.add_argument(
+        "--init-config",
+        metavar="PATH",
+        help="Create a starter YAML config file for a new API",
+    )
+    parser.add_argument(
+        "--output", default="response.json", help="Path to save the response body"
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
     parse_args = getattr(parser, "parse_intermixed_args", parser.parse_args)
     args = parse_args()
@@ -254,7 +419,9 @@ def main():
         if args.init_config:
             write_config_template(args.init_config)
             print(f"Created starter config at {args.init_config}")
-            print("Replace placeholders like ${API_TOKEN} with environment variables before calling the API.")
+            print(
+                "Replace placeholders like ${API_TOKEN} with environment variables before calling the API."
+            )
             return
 
         if args.list_configs:
@@ -268,11 +435,19 @@ def main():
             endpoint = None
         elif args.describe:
             if len(args.targets) > 1:
-                raise ValueError("Use --describe ENDPOINT with an optional [config] positional argument")
-            config_path = resolve_config_path(args.targets[0], args.config_dir) if args.targets else "config.yaml"
+                raise ValueError(
+                    "Use --describe ENDPOINT with an optional [config] positional argument"
+                )
+            config_path = (
+                resolve_config_path(args.targets[0], args.config_dir)
+                if args.targets
+                else "config.yaml"
+            )
             endpoint = None
         else:
-            config_path, endpoint = resolve_config_and_endpoint(args.targets, args.collection, args.config_dir)
+            config_path, endpoint = resolve_config_and_endpoint(
+                args.targets, args.collection, args.config_dir
+            )
 
         client = APIClient(config_path=config_path)
 
@@ -289,8 +464,15 @@ def main():
             print(json.dumps(results, indent=2))
             return
 
+        if endpoint is None:
+            raise ValueError(
+                "Provide an endpoint name, or use --list / --describe / --collection"
+            )
+
         params = parse_json_argument(args.params, "--params") if args.params else None
-        headers = parse_json_argument(args.headers, "--headers") if args.headers else None
+        headers = (
+            parse_json_argument(args.headers, "--headers") if args.headers else None
+        )
 
         request_definition = client.build_request_definition(
             endpoint,
@@ -304,34 +486,15 @@ def main():
         if args.dry_run:
             return
 
-        response = client.make_request(
-            endpoint,
-            args.body,
-            params,
-            headers
-        )
+        response = client.session.request(**request_definition["request_kwargs"])
 
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
-    # Display results
-    print(f"Status Code: {response.status_code}")
-    print(f"Success: {response.ok}")
-
-    if args.verbose:
-        print(f"\nResponse Headers:")
-        print(json.dumps(dict(response.headers), indent=2))
-
-    print(f"\nResponse Body:")
-    response_text = None
-    try:
-        response_json = response.json()
-        print(json.dumps(response_json, indent=2))
-    except Exception:
-        response_json = None
-        response_text = response.text
-        print(response_text)
+    print_response(response, args.verbose)
+    response_body = client.parse_response_body(response)
+    response_json, response_text = emit_response_body(response_body)
 
     try:
         save_response(args.output, response_json, response_text)
@@ -339,14 +502,14 @@ def main():
     except Exception as e:
         print(f"\nWarning: failed to write {args.output}: {e}")
 
-    # If token endpoint response contains access_token, persist it back to config
+    # If token endpoint response contains access_token, persist it into .env
     if isinstance(response_json, dict) and "access_token" in response_json:
         try:
-            update_auth_token(config_path, response_json["access_token"])
-            print("\nUpdated auth token in config.")
+            persist_access_token(config_path, response_json["access_token"])
+            print("\nUpdated access token in .env.")
         except Exception as e:
-            print(f"\nWarning: failed to update config with access_token: {e}")
+            print(f"\nWarning: failed to persist access_token to .env: {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
