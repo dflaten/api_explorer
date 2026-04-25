@@ -248,11 +248,3 @@ Run the full local sequence:
 ```bash
 make check
 ```
-
-Notes:
-
-- `make test` runs `pytest`
-- `make typecheck` runs `ty check`
-- `make format` runs `ruff format .`
-- `make check` runs `make format`, `make typecheck`, and `make test` in that order
-- `make check` modifies files because it formats before type checking and tests
