@@ -1,6 +1,6 @@
 # API Explorer
 
-A lightweight Python CLI for exploring and testing HTTP APIs without reaching for Postman. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
+A lightweight Python CLI for exploring and testing HTTP APIs. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
 
 ## Features
 
