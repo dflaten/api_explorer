@@ -9,15 +9,18 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// ValueEntry stores one key-value pair in an OrderedValues collection.
 type ValueEntry struct {
 	Key   string
 	Value any
 }
 
+// OrderedValues stores key-value pairs while preserving insertion order.
 type OrderedValues struct {
 	Entries []ValueEntry
 }
 
+// UnmarshalYAML decodes a YAML mapping without losing its key order.
 func (values *OrderedValues) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.MappingNode {
 		return fmt.Errorf("must be an object")
@@ -32,6 +35,7 @@ func (values *OrderedValues) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+// Set adds or replaces a value without changing the position of an existing key.
 func (values *OrderedValues) Set(key string, value any) {
 	for index := range values.Entries {
 		if values.Entries[index].Key == key {
@@ -42,6 +46,7 @@ func (values *OrderedValues) Set(key string, value any) {
 	values.Entries = append(values.Entries, ValueEntry{Key: key, Value: value})
 }
 
+// Delete removes a key and returns its value and whether the key was present.
 func (values *OrderedValues) Delete(key string) (any, bool) {
 	for index, entry := range values.Entries {
 		if entry.Key == key {
@@ -52,14 +57,17 @@ func (values *OrderedValues) Delete(key string) (any, bool) {
 	return nil, false
 }
 
+// Clone returns a shallow copy with an independent entry slice.
 func (values OrderedValues) Clone() OrderedValues {
 	return OrderedValues{Entries: append([]ValueEntry(nil), values.Entries...)}
 }
 
+// Len returns the number of stored entries.
 func (values OrderedValues) Len() int {
 	return len(values.Entries)
 }
 
+// Map returns the entries as a map, discarding their order.
 func (values OrderedValues) Map() map[string]any {
 	result := make(map[string]any, len(values.Entries))
 	for _, entry := range values.Entries {
@@ -122,6 +130,7 @@ func scalarString(value any) string {
 	}
 }
 
+// Config describes an API and the endpoints available through it.
 type Config struct {
 	BaseURL        string               `yaml:"base_url"`
 	Timeout        float64              `yaml:"timeout"`
@@ -131,6 +140,7 @@ type Config struct {
 	EndpointOrder  []string             `yaml:"-"`
 }
 
+// Auth contains bearer or basic authentication settings for an API.
 type Auth struct {
 	Type     string `yaml:"type"`
 	Token    string `yaml:"token"`
@@ -138,6 +148,7 @@ type Auth struct {
 	Password string `yaml:"password"`
 }
 
+// Endpoint describes one HTTP request available in an API configuration.
 type Endpoint struct {
 	Method      string            `yaml:"method"`
 	Path        *string           `yaml:"path"`
@@ -150,10 +161,12 @@ type Endpoint struct {
 	BodyType    string            `yaml:"body_type"`
 }
 
+// Collection contains a sequence of configured requests to execute.
 type Collection struct {
 	Requests []CollectionRequest `yaml:"requests"`
 }
 
+// CollectionRequest describes one request in a Collection.
 type CollectionRequest struct {
 	Endpoint string            `yaml:"endpoint"`
 	BodyFile string            `yaml:"body_file"`
@@ -161,6 +174,7 @@ type CollectionRequest struct {
 	Headers  map[string]string `yaml:"headers"`
 }
 
+// RequestDefinition contains the fully resolved data needed to execute a request.
 type RequestDefinition struct {
 	Endpoint         string
 	Definition       *Endpoint

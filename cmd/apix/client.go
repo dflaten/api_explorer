@@ -16,6 +16,7 @@ import (
 
 var pathParameterPattern = regexp.MustCompile(`\{([^{}]+)\}`)
 
+// APIClient builds and executes requests from a loaded API configuration.
 type APIClient struct {
 	ConfigPath string
 	Config     *Config
