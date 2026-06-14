@@ -1,17 +1,32 @@
-UV_RUN = uv run
+GO ?= go
+GORELEASER ?= goreleaser
+BINARY = bin/apix
 
-.PHONY: test compat typecheck format check
+.PHONY: build test compat vet format check release-check release-snapshot clean
 
-test:
-	$(UV_RUN) pytest
+build:
+	mkdir -p bin
+	CGO_ENABLED=0 $(GO) build -trimpath -o $(BINARY) ./cmd/apix
 
-compat:
-	$(UV_RUN) pytest tests/compat
+test: build
+	$(GO) test ./...
 
-typecheck:
-	$(UV_RUN) ty check
+compat: build
+	$(GO) test ./cmd/apix -run '^TestCLI'
+
+vet:
+	$(GO) vet ./...
 
 format:
-	$(UV_RUN) ruff format .
+	$(GO) fmt ./...
 
-check: format typecheck test
+check: format vet test
+
+release-check:
+	$(GORELEASER) check
+
+release-snapshot:
+	$(GORELEASER) release --snapshot --clean
+
+clean:
+	rm -rf bin dist

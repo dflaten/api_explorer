@@ -1,6 +1,6 @@
 # API Explorer
 
-A lightweight Python CLI for exploring and testing HTTP APIs. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
+A lightweight Go CLI for exploring and testing HTTP APIs. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
 
 ## Features
 
@@ -12,18 +12,93 @@ A lightweight Python CLI for exploring and testing HTTP APIs. Define each API in
 - 💾 Response saving to `response.json` or a custom `--output` path
 - 🔑 Built-in auth support for bearer and basic auth
 
-## Install
+## Development Setup
+
+### Requirements
+
+| Tool | Required version | Used for |
+| --- | --- | --- |
+| Git | Current supported release | Cloning, branches, tags, and publishing release tags |
+| Go | 1.26 or newer | Building, installing, formatting, vetting, and testing |
+| Make | Any modern GNU Make | Running the repository's standard development commands |
+| GoReleaser | v2 | Validating and creating release artifacts locally |
+
+GoReleaser is only required for `make release-check` and `make release-snapshot`. GitHub Actions installs it automatically when publishing a tagged release.
+
+Ubuntu/Debian example for Git and Make:
 
 ```bash
-uv sync
+sudo apt update
+sudo apt install git make
 ```
+
+macOS provides Git and Make through the Xcode command-line tools:
+
+```bash
+xcode-select --install
+```
+
+Install Go using the instructions at [go.dev/doc/install](https://go.dev/doc/install), then install GoReleaser v2:
+
+```bash
+go install github.com/goreleaser/goreleaser/v2@latest
+```
+
+Both `apix` and `goreleaser` are installed into `$(go env GOPATH)/bin`, which is usually `~/go/bin`. Add that directory to your shell's `PATH` once.
+
+Fish:
+
+```fish
+fish_add_path (go env GOPATH)/bin
+```
+
+Bash:
+
+```bash
+echo 'export PATH="$(go env GOPATH)/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Zsh:
+
+```zsh
+echo 'export PATH="$(go env GOPATH)/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Verify the development tools:
+
+```bash
+git --version
+go version
+make --version
+goreleaser --version
+```
+
+### Install From Source
+
+Clone the repository, then run the following command from the repository root:
+
+```bash
+go install ./cmd/apix
+```
+
+Verify the installation:
+
+```bash
+apix --help
+```
+
+After changing the source, run `go install ./cmd/apix` again to update the command installed in your shell. `make build` is also available when you only need a repository-local binary at `bin/apix`.
+
+The GitHub CLI (`gh`) is optional. It can be used to inspect workflow runs and releases, but it is not required to build or publish because pushing a version tag triggers the release workflow.
 
 ## Fast Start
 
 Create a named API config in the default config directory:
 
 ```bash
-uv run api-cli --init-config configs/github.yaml
+apix --init-config configs/github.yaml
 ```
 
 Create a local `.env` file from the example template:
@@ -37,31 +112,31 @@ Edit `.env` with the tokens or API keys referenced by your config.
 List available config files:
 
 ```bash
-uv run api-cli --list-configs
+apix --list-configs
 ```
 
 Describe an endpoint without sending anything:
 
 ```bash
-uv run api-cli github --describe health
+apix github --describe health
 ```
 
 Preview the exact request that would be sent:
 
 ```bash
-uv run api-cli github health --dry-run
+apix github health --dry-run
 ```
 
 Execute a request:
 
 ```bash
-uv run api-cli github health
+apix github health
 ```
 
 Use an explicit config path:
 
 ```bash
-uv run api-cli configs/newsapi.yaml top_headlines
+apix configs/newsapi.yaml top_headlines
 ```
 
 ## Set Up A New API
@@ -69,7 +144,7 @@ uv run api-cli configs/newsapi.yaml top_headlines
 1. Create a config file for the API:
 
 ```bash
-uv run api-cli --init-config configs/my_api.yaml
+apix --init-config configs/my_api.yaml
 ```
 
 2. Update the top-level settings:
@@ -112,20 +187,20 @@ MY_API_KEY=your_key_here
 5. Confirm the config is discoverable:
 
 ```bash
-uv run api-cli --list-configs
-uv run api-cli my_api --list
+apix --list-configs
+apix my_api --list
 ```
 
 6. Preview the request before sending it:
 
 ```bash
-uv run api-cli my_api get_user --dry-run
+apix my_api get_user --dry-run
 ```
 
 7. Run the endpoint:
 
 ```bash
-uv run api-cli my_api get_user
+apix my_api get_user
 ```
 
 Tips:
@@ -135,7 +210,7 @@ Tips:
 - Use endpoint `description` fields so `--list` output stays readable.
 - Keep secrets in `.env`, not in the checked-in YAML config.
 
-Run `uv run api-cli --help` for command patterns and examples.
+Run `apix --help` for command patterns and examples.
 
 ## Config Format
 
@@ -213,19 +288,13 @@ endpoints:
 ```
 
 ```bash
-uv run api-cli newsapi --describe top_headlines
-uv run api-cli newsapi top_headlines
+apix newsapi --describe top_headlines
+apix newsapi top_headlines
 ```
 
 NewsAPI endpoint reference: https://newsapi.org/docs/endpoints/top-headlines
 
-## Development
-
-Install development tools:
-
-```bash
-uv sync --group dev
-```
+## Development Commands
 
 Run tests:
 
@@ -233,10 +302,10 @@ Run tests:
 make test
 ```
 
-Run type checking:
+Run Go static analysis:
 
 ```bash
-make typecheck
+make vet
 ```
 
 Run formatting:
@@ -251,10 +320,28 @@ Run the full local sequence:
 make check
 ```
 
-Run the black-box compatibility suite against another implementation:
+Run only the black-box compatibility suite:
 
 ```bash
-API_EXPLORER_COMMAND=./path/to/api-explorer make compat
+make compat
 ```
 
-The command must implement the same CLI contract. The suite checks dry runs, HTTP requests, collections, output files, secret redaction, and schema failures.
+The native Go compatibility suite checks dry runs, HTTP requests, collections, output files, secret redaction, and schema failures.
+
+Validate the GoReleaser configuration:
+
+```bash
+make release-check
+```
+
+Build all release archives locally without publishing:
+
+```bash
+make release-snapshot
+```
+
+Release snapshots are written to the ignored `dist/` directory.
+
+## Releases
+
+See [docs/RELEASING.md](docs/RELEASING.md) for the repository-specific plan to publish prebuilt Linux and macOS binaries through GitHub Releases.
