@@ -296,6 +296,8 @@ func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 		message   string
 	}{
 		{[]string{fixturePath(t, "api.yaml"), "health", "--params", "{invalid"}, "Invalid JSON for --params"},
+		{[]string{fixturePath(t, "api.yaml"), "health", "--params", `{"page":1} garbage`}, "Invalid JSON for --params"},
+		{[]string{fixturePath(t, "api.yaml"), "health", "--headers", `{"X-Test":"value"} garbage`}, "Invalid JSON for --headers"},
 		{[]string{invalidConfig, "broken"}, "'method' is a required property"},
 	} {
 		result = runCLI(t, directory, compatibilityEnv("http://example.invalid"), test.arguments...)

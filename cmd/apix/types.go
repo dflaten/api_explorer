@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -99,6 +100,8 @@ func parseOrderedJSON(value string) (OrderedValues, error) {
 	var trailing any
 	if err := decoder.Decode(&trailing); err == nil {
 		return OrderedValues{}, fmt.Errorf("unexpected trailing data")
+	} else if err != io.EOF {
+		return OrderedValues{}, err
 	}
 	return result, nil
 }
@@ -162,10 +165,8 @@ type RequestDefinition struct {
 	Endpoint         string
 	Definition       *Endpoint
 	Method           string
-	URL              string
 	FullURL          string
 	Params           OrderedValues
-	RequestHeaders   map[string]string
 	EffectiveHeaders map[string]string
 	Timeout          float64
 	Body             any

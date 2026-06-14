@@ -66,6 +66,24 @@ func TestBuildRequestRejectsMissingPathParameter(t *testing.T) {
 	}
 }
 
+func TestBuildRequestPreservesExistingQueryParameters(t *testing.T) {
+	client := testClient(t)
+	requestURL := "https://api.example.com/users?fixed=1#results"
+	client.Config.Endpoints["absolute"] = &Endpoint{
+		Method: "GET",
+		URL:    &requestURL,
+		Params: OrderedValues{Entries: []ValueEntry{{Key: "page", Value: float64(2)}}},
+	}
+
+	definition, err := client.buildRequest("absolute", "", OrderedValues{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definition.FullURL != "https://api.example.com/users?fixed=1&page=2#results" {
+		t.Fatalf("unexpected URL %q", definition.FullURL)
+	}
+}
+
 func TestParseOrderedJSONPreservesInsertionOrder(t *testing.T) {
 	values, err := parseOrderedJSON(`{"first":1,"second":2}`)
 	if err != nil {
@@ -73,5 +91,15 @@ func TestParseOrderedJSONPreservesInsertionOrder(t *testing.T) {
 	}
 	if len(values.Entries) != 2 || values.Entries[0].Key != "first" || values.Entries[1].Key != "second" {
 		t.Fatalf("unexpected entries: %#v", values.Entries)
+	}
+}
+
+func TestParseOrderedJSONRejectsTrailingInput(t *testing.T) {
+	for _, value := range []string{`{"page":1} garbage`, `{"page":1} {`, `{"page":1} 2`} {
+		t.Run(value, func(t *testing.T) {
+			if _, err := parseOrderedJSON(value); err == nil {
+				t.Fatalf("expected trailing input in %q to fail", value)
+			}
+		})
 	}
 }

@@ -79,7 +79,17 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 
 	fullURL := requestURL
 	if parameters.Len() > 0 {
-		fullURL += "?" + encodeValues(parameters)
+		parsedURL, err := url.Parse(requestURL)
+		if err != nil {
+			return nil, err
+		}
+		encodedParameters := encodeValues(parameters)
+		if parsedURL.RawQuery == "" {
+			parsedURL.RawQuery = encodedParameters
+		} else {
+			parsedURL.RawQuery += "&" + encodedParameters
+		}
+		fullURL = parsedURL.String()
 	}
 
 	requestHeaders := cloneHeaders(endpoint.Headers)
@@ -110,10 +120,8 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 		Endpoint:         name,
 		Definition:       endpoint,
 		Method:           strings.ToUpper(endpoint.Method),
-		URL:              requestURL,
 		FullURL:          fullURL,
 		Params:           parameters,
-		RequestHeaders:   requestHeaders,
 		EffectiveHeaders: effectiveHeaders,
 		Timeout:          client.Config.Timeout,
 		Body:             body,
