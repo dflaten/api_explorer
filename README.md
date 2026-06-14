@@ -1,6 +1,6 @@
 # API Explorer
 
-A lightweight Python CLI for exploring and testing HTTP APIs without reaching for Postman. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
+A lightweight Python CLI for exploring and testing HTTP APIs. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
 
 ## Features
 
@@ -258,11 +258,3 @@ API_EXPLORER_COMMAND=./path/to/api-explorer make compat
 ```
 
 The command must implement the same CLI contract. The suite checks dry runs, HTTP requests, collections, output files, secret redaction, and schema failures.
-
-Notes:
-
-- `make test` runs `pytest`
-- `make typecheck` runs `ty check`
-- `make format` runs `ruff format .`
-- `make check` runs `make format`, `make typecheck`, and `make test` in that order
-- `make check` modifies files because it formats before type checking and tests
