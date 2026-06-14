@@ -1,0 +1,8 @@
+base_url: ${TEST_SERVER_URL}
+auth:
+  type: bearer
+  token: ${PERSISTED_TOKEN}
+endpoints:
+  token:
+    method: GET
+    path: /token

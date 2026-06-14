@@ -1,0 +1,3 @@
+requests:
+  - endpoint: health
+  - endpoint: unavailable

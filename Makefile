@@ -1,9 +1,12 @@
 UV_RUN = uv run
 
-.PHONY: test typecheck format check
+.PHONY: test compat typecheck format check
 
 test:
 	$(UV_RUN) pytest
+
+compat:
+	$(UV_RUN) pytest tests/compat
 
 typecheck:
 	$(UV_RUN) ty check

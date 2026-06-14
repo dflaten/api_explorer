@@ -1,0 +1,9 @@
+base_url: ${TEST_SERVER_URL}
+auth:
+  type: basic
+  username: compat-user
+  password: compat-password
+endpoints:
+  auth:
+    method: GET
+    path: /auth
