@@ -1,0 +1,39 @@
+base_url: ${TEST_SERVER_URL}
+timeout: 5
+default_headers:
+  Authorization: Bearer ${COMPAT_TOKEN}
+  X-Default: default-value
+endpoints:
+  inspect:
+    method: POST
+    path: /items/{id}
+    params:
+      id: "42"
+      source: config
+    headers:
+      X-Endpoint: endpoint-value
+    body:
+      name: example
+  health:
+    method: GET
+    path: /health
+    description: Health check endpoint
+  form:
+    method: POST
+    path: /form
+    body_type: form
+    body:
+      name: example
+      active: "true"
+  text:
+    method: GET
+    path: /text
+  empty:
+    method: GET
+    path: /empty
+  missing:
+    method: GET
+    path: /missing
+  token:
+    method: GET
+    path: /token

@@ -12,6 +12,139 @@ import yaml
 ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
 
+def _validation_error(document_label: str, location: str, message: str) -> None:
+    raise ValueError(f"Invalid {document_label} at {location}: {message}")
+
+
+def _validate_headers(value: Any, document_label: str, location: str) -> None:
+    if not isinstance(value, dict):
+        _validation_error(document_label, location, "must be an object")
+    for key, header_value in value.items():
+        if not isinstance(key, str) or not isinstance(header_value, str):
+            _validation_error(
+                document_label, location, "header names and values must be strings"
+            )
+
+
+def _validate_params(value: Any, document_label: str, location: str) -> None:
+    if not isinstance(value, dict):
+        _validation_error(document_label, location, "must be an object")
+    scalar_types = (str, int, float, bool, type(None))
+    for key, param_value in value.items():
+        if not isinstance(key, str) or not isinstance(param_value, scalar_types):
+            _validation_error(
+                document_label,
+                location,
+                "parameter names must be strings and values must be scalar",
+            )
+
+
+def validate_api_config(document: Any) -> None:
+    """Enforce the contract in schemas/api-config.schema.json."""
+    label = "API config"
+    if not isinstance(document, dict):
+        _validation_error(label, "<root>", "must be an object")
+    if "endpoints" not in document:
+        _validation_error(label, "<root>", "'endpoints' is a required property")
+    if not isinstance(document["endpoints"], dict):
+        _validation_error(label, "endpoints", "must be an object")
+
+    if "base_url" in document and not isinstance(document["base_url"], str):
+        _validation_error(label, "base_url", "must be a string")
+    if "timeout" in document:
+        timeout = document["timeout"]
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or timeout <= 0
+        ):
+            _validation_error(label, "timeout", "must be a number greater than zero")
+    if "default_headers" in document:
+        _validate_headers(document["default_headers"], label, "default_headers")
+
+    auth = document.get("auth")
+    if auth is not None:
+        if not isinstance(auth, dict):
+            _validation_error(label, "auth", "must be an object")
+        auth_type = auth.get("type")
+        if auth_type == "bearer":
+            required = ("token",)
+        elif auth_type == "basic":
+            required = ("username", "password")
+        else:
+            _validation_error(label, "auth.type", "must be 'bearer' or 'basic'")
+        for field in required:
+            if field not in auth:
+                _validation_error(label, "auth", f"'{field}' is a required property")
+            if not isinstance(auth[field], str):
+                _validation_error(label, f"auth.{field}", "must be a string")
+
+    for name, endpoint in document["endpoints"].items():
+        location = f"endpoints.{name}"
+        if not isinstance(name, str) or not isinstance(endpoint, dict):
+            _validation_error(
+                label, location, "endpoint names and values must be objects"
+            )
+        if "method" not in endpoint:
+            _validation_error(label, location, "'method' is a required property")
+        if not isinstance(endpoint["method"], str) or not endpoint["method"]:
+            _validation_error(label, f"{location}.method", "must be a non-empty string")
+        has_path = "path" in endpoint
+        has_url = "url" in endpoint
+        if has_path == has_url:
+            _validation_error(
+                label, location, "must contain exactly one of 'path' or 'url'"
+            )
+        target_field = "path" if has_path else "url"
+        if not isinstance(endpoint[target_field], str):
+            _validation_error(label, f"{location}.{target_field}", "must be a string")
+        if "base_url" in endpoint and not isinstance(endpoint["base_url"], str):
+            _validation_error(label, f"{location}.base_url", "must be a string")
+        if "description" in endpoint and not isinstance(endpoint["description"], str):
+            _validation_error(label, f"{location}.description", "must be a string")
+        if "headers" in endpoint:
+            _validate_headers(endpoint["headers"], label, f"{location}.headers")
+        if "params" in endpoint:
+            _validate_params(endpoint["params"], label, f"{location}.params")
+        if endpoint.get("body_type", "json") not in {"json", "form"}:
+            _validation_error(
+                label, f"{location}.body_type", "must be 'json' or 'form'"
+            )
+
+
+def validate_collection(document: Any) -> None:
+    """Enforce the contract in schemas/collection.schema.json."""
+    label = "collection"
+    if not isinstance(document, dict):
+        _validation_error(label, "<root>", "must be an object")
+    if "requests" not in document:
+        _validation_error(label, "<root>", "'requests' is a required property")
+    if not isinstance(document["requests"], list):
+        _validation_error(label, "requests", "must be an array")
+
+    for index, request_item in enumerate(document["requests"]):
+        location = f"requests.{index}"
+        if not isinstance(request_item, dict):
+            _validation_error(label, location, "must be an object")
+        if "endpoint" not in request_item:
+            _validation_error(label, location, "'endpoint' is a required property")
+        if (
+            not isinstance(request_item["endpoint"], str)
+            or not request_item["endpoint"]
+        ):
+            _validation_error(
+                label, f"{location}.endpoint", "must be a non-empty string"
+            )
+        if "body_file" in request_item and not isinstance(
+            request_item["body_file"], str
+        ):
+            _validation_error(label, f"{location}.body_file", "must be a string")
+        if "headers" in request_item:
+            _validate_headers(request_item["headers"], label, f"{location}.headers")
+        if "params" in request_item:
+            _validate_params(request_item["params"], label, f"{location}.params")
+
+
 class ResponseLike(Protocol):
     content: bytes
     text: str
@@ -31,6 +164,7 @@ class APIClient:
         """Load configuration from YAML file."""
         with open(config_path, "r") as f:
             raw_config = yaml.safe_load(f) or {}
+        validate_api_config(raw_config)
         return self._resolve_env_values(raw_config)
 
     def _resolve_env_values(self, value: Any) -> Any:
@@ -99,6 +233,10 @@ class APIClient:
                         path_params[key] = request_params.pop(key)
                 for key, value in path_params.items():
                     path = path.replace("{" + key + "}", str(value))
+                unresolved = re.findall(r"\{([^{}]+)\}", path)
+                if unresolved:
+                    names = ", ".join(unresolved)
+                    raise ValueError(f"Missing path parameter values: {names}")
             url = f"{base_url}{path}"
 
         body = None
@@ -170,6 +308,7 @@ class APIClient:
         """Execute multiple requests from a YAML collection file."""
         with open(collection_path, "r") as f:
             collection = yaml.safe_load(f) or {}
+        validate_collection(collection)
 
         results = {}
         for request_item in collection.get("requests", []):

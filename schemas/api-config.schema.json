@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://api-explorer.dev/schemas/api-config.schema.json",
+  "title": "API Explorer API configuration",
+  "type": "object",
+  "required": ["endpoints"],
+  "properties": {
+    "base_url": {"type": "string"},
+    "timeout": {"type": "number", "exclusiveMinimum": 0},
+    "default_headers": {"$ref": "#/$defs/headers"},
+    "auth": {"$ref": "#/$defs/auth"},
+    "endpoints": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/endpoint"}
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "headers": {
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "number", "boolean", "null"]
+      }
+    },
+    "auth": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "token"],
+          "properties": {
+            "type": {"const": "bearer"},
+            "token": {"type": "string"}
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "required": ["type", "username", "password"],
+          "properties": {
+            "type": {"const": "basic"},
+            "username": {"type": "string"},
+            "password": {"type": "string"}
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "endpoint": {
+      "type": "object",
+      "required": ["method"],
+      "oneOf": [
+        {"required": ["path"], "not": {"required": ["url"]}},
+        {"required": ["url"], "not": {"required": ["path"]}}
+      ],
+      "properties": {
+        "method": {"type": "string", "minLength": 1},
+        "path": {"type": "string"},
+        "url": {"type": "string"},
+        "base_url": {"type": "string"},
+        "description": {"type": "string"},
+        "headers": {"$ref": "#/$defs/headers"},
+        "params": {"$ref": "#/$defs/params"},
+        "body": true,
+        "body_type": {"enum": ["json", "form"]}
+      },
+      "additionalProperties": true
+    }
+  }
+}

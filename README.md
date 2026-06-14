@@ -171,6 +171,8 @@ endpoints:
 
 Notes:
 
+- API configs and collections are validated according to the JSON Schemas in `schemas/` before execution.
+- Unknown fields are allowed for forward-compatible metadata, but known fields and required values must match the schema.
 - `${API_TOKEN}` style placeholders are expanded from environment variables when the config loads.
 - `.env` is loaded automatically when the CLI starts, and existing shell variables win if both are set.
 - Use a YAML file for each API
@@ -248,3 +250,11 @@ Run the full local sequence:
 ```bash
 make check
 ```
+
+Run the black-box compatibility suite against another implementation:
+
+```bash
+API_EXPLORER_COMMAND=./path/to/api-explorer make compat
+```
+
+The command must implement the same CLI contract. The suite checks dry runs, HTTP requests, collections, output files, secret redaction, and schema failures.

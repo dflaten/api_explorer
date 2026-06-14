@@ -30,3 +30,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["api_cli", "api_client"]
+
+[tool.setuptools.data-files]
+"share/api-explorer/schemas" = [
+  "schemas/api-config.schema.json",
+  "schemas/collection.schema.json",
+]
