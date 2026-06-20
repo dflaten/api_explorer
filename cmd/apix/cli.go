@@ -14,21 +14,21 @@ import (
 )
 
 type options struct {
-	Targets     []string
-	Body        string
-	Params      string
-	Headers     string
-	Collection  string
-	ConfigDir   string
-	ListConfigs bool
-	List        bool
-	Describe    string
-	DryRun      bool
-	InitConfig  string
-	Output      string
-	Verbose     bool
-	Help        bool
-	Version     bool
+	Targets        []string
+	Body           string
+	Params         string
+	Headers        string
+	Collection     string
+	ConfigDir      string
+	ListConfigs    bool
+	List           bool
+	Describe       string
+	RequestPreview bool
+	InitConfig     string
+	Output         string
+	Verbose        bool
+	Help           bool
+	Version        bool
 }
 
 var sensitiveHeaders = map[string]bool{
@@ -62,8 +62,8 @@ func parseOptions(arguments []string) (options, error) {
 			result.ListConfigs = true
 		case "--list":
 			result.List = true
-		case "--dry-run":
-			result.DryRun = true
+		case "--request-preview", "--dry-run":
+			result.RequestPreview = true
 		case "--verbose", "-v":
 			result.Verbose = true
 		case "--help", "-h":
@@ -163,7 +163,7 @@ func run(arguments []string) error {
 		return err
 	}
 	printRequestPreview(definition)
-	if options.DryRun {
+	if options.RequestPreview {
 		return nil
 	}
 	response, err := client.execute(definition)
@@ -493,7 +493,7 @@ Options:
   --list-configs          List available config aliases
   --list                  List configured endpoints
   --describe ENDPOINT     Describe an endpoint without executing it
-  --dry-run               Preview a request without sending it
+  --request-preview       Preview a request without sending it
   --init-config PATH      Create a starter YAML config
   --output PATH           Response output path (default: response.json)
   --verbose, -v           Print response headers
@@ -505,7 +505,7 @@ Examples:
   apix --list-configs
   apix github --list
   apix github --describe get_repo
-  apix github get_repo --dry-run
+  apix github get_repo --request-preview
   apix github get_repo --params '{"owner":"octocat"}'
 `)
 }

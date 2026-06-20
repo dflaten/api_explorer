@@ -5,7 +5,7 @@ A lightweight Go CLI for exploring and testing HTTP APIs. Define each API in YAM
 ## Features
 
 - 📁 One YAML config per API, with alias-based selection from `configs/`
-- 🔍 JSON-shaped request previews with `--dry-run`
+- 🔍 JSON-shaped request previews with `--request-preview`
 - 🧭 Endpoint discovery with `--list` and `--describe`
 - 🔐 Local secret loading from `.env`
 - 📦 Batch request execution with YAML collections
@@ -124,7 +124,7 @@ apix github --describe health
 Preview the exact request that would be sent:
 
 ```bash
-apix github health --dry-run
+apix github health --request-preview
 ```
 
 Execute a request:
@@ -194,7 +194,7 @@ apix my_api --list
 6. Preview the request before sending it:
 
 ```bash
-apix my_api get_user --dry-run
+apix my_api get_user --request-preview
 ```
 
 7. Run the endpoint:
@@ -326,7 +326,7 @@ Run only the black-box compatibility suite:
 make compat
 ```
 
-The native Go compatibility suite checks dry runs, HTTP requests, collections, output files, secret redaction, and schema failures.
+The native Go compatibility suite checks request previews, HTTP requests, collections, output files, secret redaction, and schema failures.
 
 Validate the GoReleaser configuration:
 
