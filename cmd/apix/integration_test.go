@@ -120,9 +120,9 @@ func compatibilityServer(t *testing.T) (*httptest.Server, <-chan receivedRequest
 	return server, received
 }
 
-func TestCLIDryRunRedactsSecrets(t *testing.T) {
+func TestCLIRequestPreviewRedactsSecrets(t *testing.T) {
 	directory := t.TempDir()
-	result := runCLI(t, directory, compatibilityEnv("http://example.invalid"), fixturePath(t, "api.yaml"), "inspect", "--dry-run", "--params", `{"id":"99","page":2}`)
+	result := runCLI(t, directory, compatibilityEnv("http://example.invalid"), fixturePath(t, "api.yaml"), "inspect", "--request-preview", "--params", `{"id":"99","page":2}`)
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
@@ -133,6 +133,17 @@ func TestCLIDryRunRedactsSecrets(t *testing.T) {
 	}
 	if strings.Contains(result.stdout, "compat-secret") {
 		t.Fatal("secret was printed")
+	}
+}
+
+func TestCLIDryRunAliasStillPreviewsRequests(t *testing.T) {
+	directory := t.TempDir()
+	result := runCLI(t, directory, compatibilityEnv("http://example.invalid"), fixturePath(t, "api.yaml"), "health", "--dry-run")
+	if result.exitCode != 0 {
+		t.Fatal(result.stderr)
+	}
+	if !strings.Contains(result.stdout, "Request Preview:") {
+		t.Fatalf("stdout missing request preview:\n%s", result.stdout)
 	}
 }
 
@@ -260,11 +271,11 @@ func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(directory, ".env"), []byte("DOTENV_TOKEN=file-token\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result := runCLI(t, directory, nil, configPath, "health", "--dry-run")
+	result := runCLI(t, directory, nil, configPath, "health", "--request-preview")
 	if result.exitCode != 0 || !strings.Contains(result.stdout, `"X-Dotenv-Value": "file-token"`) {
 		t.Fatalf("dotenv was not loaded: %#v", result)
 	}
-	result = runCLI(t, directory, map[string]string{"DOTENV_TOKEN": "shell-token"}, configPath, "health", "--dry-run")
+	result = runCLI(t, directory, map[string]string{"DOTENV_TOKEN": "shell-token"}, configPath, "health", "--request-preview")
 	if !strings.Contains(result.stdout, `"X-Dotenv-Value": "shell-token"`) {
 		t.Fatalf("shell value did not win: %s", result.stdout)
 	}
