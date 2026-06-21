@@ -41,7 +41,7 @@ var sensitiveHeaders = map[string]bool{
 var envTokenPattern = regexp.MustCompile(`^\$\{([A-Z0-9_]+)\}$`)
 
 func parseOptions(arguments []string) (options, error) {
-	result := options{ConfigDir: "configs", Output: "response.json"}
+	result := options{Output: "response.json"}
 	valueOptions := map[string]*string{
 		"--body": &result.Body, "--params": &result.Params, "--headers": &result.Headers,
 		"--collection": &result.Collection, "--config-dir": &result.ConfigDir,
@@ -81,9 +81,6 @@ func parseOptions(arguments []string) (options, error) {
 }
 
 func run(arguments []string) error {
-	if err := loadEnvFile(".env"); err != nil {
-		return err
-	}
 	options, err := parseOptions(arguments)
 	if err != nil {
 		return err
@@ -96,11 +93,21 @@ func run(arguments []string) error {
 		printVersion()
 		return nil
 	}
+	if err := setDefaultPaths(&options); err != nil {
+		return err
+	}
+	if err := loadEnvFile(defaultEnvFile()); err != nil {
+		return err
+	}
 	if options.InitConfig != "" {
-		if err := writeConfigTemplate(options.InitConfig); err != nil {
+		path, err := resolveInitConfigPath(options.InitConfig, options.ConfigDir)
+		if err != nil {
 			return err
 		}
-		fmt.Printf("Created starter config at %s\n", options.InitConfig)
+		if err := writeConfigTemplate(path); err != nil {
+			return err
+		}
+		fmt.Printf("Created starter config at %s\n", path)
 		fmt.Println("Replace placeholders like ${API_TOKEN} with environment variables before calling the API.")
 		return nil
 	}
@@ -184,10 +191,11 @@ func run(arguments []string) error {
 	}
 	if object, ok := responseJSON.(map[string]any); ok {
 		if token, ok := object["access_token"].(string); ok {
-			if err := persistAccessToken(configPath, token, ".env"); err != nil {
-				fmt.Printf("\nWarning: failed to persist access_token to .env: %s\n", err)
+			envPath := defaultEnvFile()
+			if err := persistAccessToken(configPath, token, envPath); err != nil {
+				fmt.Printf("\nWarning: failed to persist access_token to %s: %s\n", envPath, err)
 			} else {
-				fmt.Println("\nUpdated access token in .env.")
+				fmt.Printf("\nUpdated access token in %s.\n", envPath)
 			}
 		}
 	}
@@ -197,7 +205,7 @@ func run(arguments []string) error {
 func resolveTargets(options options) (string, string, error) {
 	if options.List {
 		if len(options.Targets) == 0 {
-			return "config.yaml", "", nil
+			return defaultConfigFile(), "", nil
 		}
 		if len(options.Targets) == 1 {
 			path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
@@ -210,7 +218,7 @@ func resolveTargets(options options) (string, string, error) {
 			return "", "", fmt.Errorf("Use --describe ENDPOINT with an optional [config] positional argument")
 		}
 		if len(options.Targets) == 0 {
-			return "config.yaml", "", nil
+			return defaultConfigFile(), "", nil
 		}
 		path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
 		return path, "", err
@@ -220,7 +228,7 @@ func resolveTargets(options options) (string, string, error) {
 			return "", "", fmt.Errorf("Collection mode accepts at most one positional argument: [config]")
 		}
 		if len(options.Targets) == 0 {
-			return "config.yaml", "", nil
+			return defaultConfigFile(), "", nil
 		}
 		path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
 		return path, "", err
@@ -229,7 +237,7 @@ func resolveTargets(options options) (string, string, error) {
 		return "", "", fmt.Errorf("Provide an endpoint name, or use --list / --describe / --init-config")
 	}
 	if len(options.Targets) == 1 {
-		return "config.yaml", options.Targets[0], nil
+		return defaultConfigFile(), options.Targets[0], nil
 	}
 	if len(options.Targets) == 2 {
 		path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
@@ -239,8 +247,12 @@ func resolveTargets(options options) (string, string, error) {
 }
 
 func resolveConfigPath(specification, configDirectory string) (string, error) {
-	if fileExists(specification) {
-		return specification, nil
+	path, err := expandHome(specification)
+	if err != nil {
+		return "", err
+	}
+	if fileExists(path) {
+		return path, nil
 	}
 	candidates := []string{filepath.Join(configDirectory, specification), filepath.Join(configDirectory, specification+".yaml"), filepath.Join(configDirectory, specification+".yml")}
 	for _, candidate := range candidates {
@@ -248,13 +260,74 @@ func resolveConfigPath(specification, configDirectory string) (string, error) {
 			return candidate, nil
 		}
 	}
-	if extension := filepath.Ext(specification); extension == ".yaml" || extension == ".yml" || strings.ContainsRune(specification, os.PathSeparator) {
-		return specification, nil
+	if isExplicitConfigPath(specification) {
+		return path, nil
 	}
 	return "", fmt.Errorf("Unknown config alias '%s'. Use --list-configs to see available configs.", specification)
 }
 
 func fileExists(path string) bool { info, err := os.Stat(path); return err == nil && !info.IsDir() }
+
+func setDefaultPaths(options *options) error {
+	if options.ConfigDir == "" {
+		options.ConfigDir = defaultConfigDir()
+		return nil
+	}
+	path, err := expandHome(options.ConfigDir)
+	if err != nil {
+		return err
+	}
+	options.ConfigDir = path
+	return nil
+}
+
+func defaultConfigHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return filepath.Join(".config", "apix")
+	}
+	return filepath.Join(home, ".config", "apix")
+}
+
+func defaultConfigDir() string { return filepath.Join(defaultConfigHome(), "configs") }
+
+func defaultConfigFile() string { return filepath.Join(defaultConfigHome(), "config.yaml") }
+
+func defaultEnvFile() string { return filepath.Join(defaultConfigHome(), ".env") }
+
+func resolveInitConfigPath(specification, configDirectory string) (string, error) {
+	path, err := expandHome(specification)
+	if err != nil {
+		return "", err
+	}
+	if isExplicitConfigPath(specification) {
+		return path, nil
+	}
+	return filepath.Join(configDirectory, specification+".yaml"), nil
+}
+
+func isExplicitConfigPath(specification string) bool {
+	extension := filepath.Ext(specification)
+	return extension == ".yaml" || extension == ".yml" || strings.ContainsRune(specification, os.PathSeparator)
+}
+
+func expandHome(path string) (string, error) {
+	if path == "~" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return home, nil
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, strings.TrimPrefix(path, "~/")), nil
+	}
+	return path, nil
+}
 
 func printConfigList(directory string) error {
 	entries, err := os.ReadDir(directory)
@@ -434,7 +507,7 @@ func persistAccessToken(configPath, token, envPath string) error {
 	}
 	match := envTokenPattern.FindStringSubmatch(tokenValue)
 	if match == nil {
-		return fmt.Errorf("Config auth token must use ${ENV_VAR} syntax to persist access_token into .env")
+		return fmt.Errorf("Config auth token must use ${ENV_VAR} syntax to persist access_token into the env file")
 	}
 	return updateEnvValue(envPath, match[1], token)
 }
@@ -489,19 +562,19 @@ Options:
   --params JSON           Query parameter overrides
   --headers JSON          Header overrides
   --collection PATH       Execute a YAML request collection
-  --config-dir PATH       Config alias directory (default: configs)
+  --config-dir PATH       Config alias directory (default: ~/.config/apix/configs)
   --list-configs          List available config aliases
   --list                  List configured endpoints
   --describe ENDPOINT     Describe an endpoint without executing it
   --request-preview       Preview a request without sending it
-  --init-config PATH      Create a starter YAML config
+  --init-config NAME|PATH Create a starter YAML config
   --output PATH           Response output path (default: response.json)
   --verbose, -v           Print response headers
   --version               Show version and build information
   --help, -h              Show this help
 
 Examples:
-  apix --init-config configs/github.yaml
+  apix --init-config github
   apix --list-configs
   apix github --list
   apix github --describe get_repo

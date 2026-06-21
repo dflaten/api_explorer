@@ -4,10 +4,10 @@ A lightweight Go CLI for exploring and testing HTTP APIs. Define each API in YAM
 
 ## Features
 
-- 📁 One YAML config per API, with alias-based selection from `configs/`
+- 📁 One YAML config per API, with alias-based selection from `~/.config/apix/configs/`
 - 🔍 JSON-shaped request previews with `--request-preview`
 - 🧭 Endpoint discovery with `--list` and `--describe`
-- 🔐 Local secret loading from `.env`
+- 🔐 Local secret loading from `~/.config/apix/.env`
 - 📦 Batch request execution with YAML collections
 - 💾 Response saving to `response.json` or a custom `--output` path
 - 🔑 Built-in auth support for bearer and basic auth
@@ -98,16 +98,19 @@ The GitHub CLI (`gh`) is optional. It can be used to inspect workflow runs and r
 Create a named API config in the default config directory:
 
 ```bash
-apix --init-config configs/github.yaml
+apix --init-config github
 ```
 
-Create a local `.env` file from the example template:
+Create the default config directory and `.env` file from the example template:
 
 ```bash
-cp .env.example .env
+mkdir -p ~/.config/apix
+cp .env.example ~/.config/apix/.env
 ```
 
-Edit `.env` with the tokens or API keys referenced by your config.
+Edit `~/.config/apix/.env` with the tokens or API keys referenced by your config.
+
+By default, `apix` uses `~/.config/apix` on Linux and macOS. API aliases are read from `~/.config/apix/configs`, and `--config-dir` can point aliases at another directory when needed.
 
 List available config files:
 
@@ -136,7 +139,7 @@ apix github health
 Use an explicit config path:
 
 ```bash
-apix configs/newsapi.yaml top_headlines
+apix ~/.config/apix/configs/newsapi.yaml top_headlines
 ```
 
 ## Set Up A New API
@@ -144,7 +147,7 @@ apix configs/newsapi.yaml top_headlines
 1. Create a config file for the API:
 
 ```bash
-apix --init-config configs/my_api.yaml
+apix --init-config my_api
 ```
 
 2. Update the top-level settings:
@@ -178,7 +181,7 @@ endpoints:
       id: "123"
 ```
 
-4. Add secrets to `.env`:
+4. Add secrets to `~/.config/apix/.env`:
 
 ```dotenv
 MY_API_KEY=your_key_here
@@ -208,7 +211,7 @@ Tips:
 - Start with a simple `health`, `me`, or `list` endpoint before adding write operations.
 - Put large request payloads in separate JSON files and pass them with `--body`.
 - Use endpoint `description` fields so `--list` output stays readable.
-- Keep secrets in `.env`, not in the checked-in YAML config.
+- Keep secrets in `~/.config/apix/.env`, not in the checked-in YAML config.
 
 Run `apix --help` for command patterns and examples.
 
@@ -216,9 +219,9 @@ Run `apix --help` for command patterns and examples.
 
 Each config file represents one API and is written in YAML. Keep separate files such as:
 
-- `configs/github.yaml`
-- `configs/stripe.yaml`
-- `configs/slack.yaml`
+- `~/.config/apix/configs/github.yaml`
+- `~/.config/apix/configs/stripe.yaml`
+- `~/.config/apix/configs/slack.yaml`
 
 Example config:
 
@@ -249,21 +252,22 @@ Notes:
 - API configs and collections are validated according to the JSON Schemas in `schemas/` before execution.
 - Unknown fields are allowed for forward-compatible metadata, but known fields and required values must match the schema.
 - `${API_TOKEN}` style placeholders are expanded from environment variables when the config loads.
-- `.env` is loaded automatically when the CLI starts, and existing shell variables win if both are set.
+- `~/.config/apix/.env` is loaded automatically when the CLI starts, and existing shell variables win if both are set.
 - Use a YAML file for each API
-- Config aliases come from filenames inside `configs/` by default, so `configs/github.yaml` becomes `github`.
+- Config aliases come from filenames inside `~/.config/apix/configs/` by default, so `~/.config/apix/configs/github.yaml` becomes `github`.
 - Path parameters such as `/users/{id}` are filled from the endpoint's `params` block or from `--params`.
 - Endpoint-level `headers`, `params`, and `body` are merged with CLI overrides.
-- If a response JSON object contains `access_token`, the tool updates the referenced `.env` variable when `auth.token` uses `${ENV_VAR}` syntax.
+- If a response JSON object contains `access_token`, the tool updates the referenced variable in `~/.config/apix/.env` when `auth.token` uses `${ENV_VAR}` syntax.
 - Multiple APIs can all return `access_token`; keep them separate by using different env vars such as `${GITHUB_TOKEN}` and `${SLACK_TOKEN}` in each config.
 - Request and response previews are JSON-shaped in CLI output for readability.
 
 ## Real Example
 
-Create the local `.env` file and add your NewsAPI key:
+Create the default `.env` file and add your NewsAPI key:
 
 ```bash
-cp .env.example .env
+mkdir -p ~/.config/apix
+cp .env.example ~/.config/apix/.env
 ```
 
 ```dotenv

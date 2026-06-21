@@ -44,7 +44,7 @@ func runCLI(t *testing.T, directory string, environment map[string]string, argum
 	commandArguments = append(commandArguments, arguments...)
 	command := exec.Command(os.Args[0], commandArguments...)
 	command.Dir = directory
-	command.Env = append(os.Environ(), "APIX_TEST_HELPER=1")
+	command.Env = append(os.Environ(), "APIX_TEST_HELPER=1", "HOME="+directory)
 	for key, value := range environment {
 		command.Env = append(command.Env, key+"="+value)
 	}
@@ -245,14 +245,18 @@ func TestCLIResponseFilesAndTokenPersistence(t *testing.T) {
 	}
 
 	directory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(directory, ".env"), []byte("PERSISTED_TOKEN=old-token\nOTHER=value\n"), 0o644); err != nil {
+	configHome := filepath.Join(directory, ".config", "apix")
+	if err := os.MkdirAll(configHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, ".env"), []byte("PERSISTED_TOKEN=old-token\nOTHER=value\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	result := runCLI(t, directory, map[string]string{"TEST_SERVER_URL": server.URL}, fixturePath(t, "token.yaml"), "token")
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
-	data, err := os.ReadFile(filepath.Join(directory, ".env"))
+	data, err := os.ReadFile(filepath.Join(configHome, ".env"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,12 +267,16 @@ func TestCLIResponseFilesAndTokenPersistence(t *testing.T) {
 
 func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 	directory := t.TempDir()
+	configHome := filepath.Join(directory, ".config", "apix")
 	configPath := filepath.Join(directory, "dotenv.yaml")
 	config := "default_headers:\n  Authorization: Bearer ${DOTENV_TOKEN}\n  X-Dotenv-Value: ${DOTENV_TOKEN}\nendpoints:\n  health:\n    method: GET\n    url: http://example.invalid/health\n"
 	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, ".env"), []byte("DOTENV_TOKEN=file-token\n"), 0o644); err != nil {
+	if err := os.MkdirAll(configHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configHome, ".env"), []byte("DOTENV_TOKEN=file-token\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	result := runCLI(t, directory, nil, configPath, "health", "--request-preview")
@@ -280,12 +288,31 @@ func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 		t.Fatalf("shell value did not win: %s", result.stdout)
 	}
 
-	configDirectory := filepath.Join(directory, "configs")
-	if err := os.Mkdir(configDirectory, 0o755); err != nil {
+	result = runCLI(t, directory, nil, "--init-config", "github")
+	if result.exitCode != 0 {
+		t.Fatal(result.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(configHome, "configs", "github.yaml")); err != nil {
 		t.Fatal(err)
 	}
+
+	defaultConfigDirectory := filepath.Join(configHome, "configs")
 	fixture, err := os.ReadFile(fixturePath(t, "api.yaml"))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(defaultConfigDirectory, "compat.yaml"), fixture, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, arguments := range [][]string{{"--list-configs"}, {"compat", "--list"}, {"compat", "--describe", "health"}} {
+		result = runCLI(t, directory, compatibilityEnv("http://example.invalid"), arguments...)
+		if result.exitCode != 0 {
+			t.Fatal(result.stderr)
+		}
+	}
+
+	configDirectory := filepath.Join(directory, "configs")
+	if err := os.Mkdir(configDirectory, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(configDirectory, "compat.yaml"), fixture, 0o644); err != nil {

@@ -172,3 +172,44 @@ func TestWriteConfigTemplateCreatesValidConfig(t *testing.T) {
 		t.Fatalf("expected overwrite error, got %v", err)
 	}
 }
+
+func TestDefaultConfigPathsUseHomeConfigDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	expectedHome := filepath.Join(home, ".config", "apix")
+	if defaultConfigHome() != expectedHome {
+		t.Fatalf("unexpected config home: %s", defaultConfigHome())
+	}
+	if defaultConfigDir() != filepath.Join(expectedHome, "configs") {
+		t.Fatalf("unexpected config dir: %s", defaultConfigDir())
+	}
+	if defaultConfigFile() != filepath.Join(expectedHome, "config.yaml") {
+		t.Fatalf("unexpected config file: %s", defaultConfigFile())
+	}
+	if defaultEnvFile() != filepath.Join(expectedHome, ".env") {
+		t.Fatalf("unexpected env file: %s", defaultEnvFile())
+	}
+}
+
+func TestResolveInitConfigPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	configDirectory := filepath.Join(home, ".config", "apix", "configs")
+
+	path, err := resolveInitConfigPath("github", configDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(configDirectory, "github.yaml") {
+		t.Fatalf("unexpected alias path: %s", path)
+	}
+
+	path, err = resolveInitConfigPath("~/custom.yaml", configDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(home, "custom.yaml") {
+		t.Fatalf("unexpected explicit path: %s", path)
+	}
+}
