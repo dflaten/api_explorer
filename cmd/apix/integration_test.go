@@ -203,11 +203,14 @@ func TestCLIBasicAuthAndCollections(t *testing.T) {
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
-	var output map[string]map[string]any
+	var output []map[string]any
 	if err := json.Unmarshal([]byte(result.stdout), &output); err != nil {
 		t.Fatal(err)
 	}
-	if output["health"]["success"] != true || output["unavailable"]["success"] != false {
+	if len(output) != 3 || output[0]["endpoint"] != "health" || output[1]["endpoint"] != "health" || output[2]["endpoint"] != "unavailable" {
+		t.Fatalf("collection output did not preserve order and duplicates: %#v", output)
+	}
+	if output[0]["success"] != true || output[1]["success"] != true || output[2]["success"] != false {
 		t.Fatalf("unexpected collection output: %#v", output)
 	}
 }

@@ -58,11 +58,40 @@ func TestBuildRequestMergesOverrides(t *testing.T) {
 
 func TestBuildRequestRejectsMissingPathParameter(t *testing.T) {
 	client := testClient(t)
-	delete(client.Config.Endpoints["user"].Params.Map(), "id")
 	client.Config.Endpoints["user"].Params = OrderedValues{Entries: []ValueEntry{{Key: "expand", Value: "teams"}}}
 	_, err := client.buildRequest("user", "", OrderedValues{}, nil)
 	if err == nil || err.Error() != "Missing path parameter values: id" {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildRequestEscapesPathParameters(t *testing.T) {
+	client := testClient(t)
+	params := OrderedValues{}
+	params.Set("id", "a/b c")
+
+	definition, err := client.buildRequest("user", "", params, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definition.FullURL != "https://api.example.com/users/a%2Fb%20c?expand=teams" {
+		t.Fatalf("unexpected URL %q", definition.FullURL)
+	}
+}
+
+func TestScalarStringUsesHTTPFriendlyBooleansAndNull(t *testing.T) {
+	tests := []struct {
+		value any
+		want  string
+	}{
+		{true, "true"},
+		{false, "false"},
+		{nil, "null"},
+	}
+	for _, test := range tests {
+		if got := scalarString(test.value); got != test.want {
+			t.Fatalf("scalarString(%#v) = %q, want %q", test.value, got, test.want)
+		}
 	}
 }
 

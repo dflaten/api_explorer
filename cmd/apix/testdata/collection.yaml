@@ -1,3 +1,4 @@
 requests:
   - endpoint: health
+  - endpoint: health
   - endpoint: unavailable

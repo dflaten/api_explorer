@@ -117,12 +117,12 @@ func parseOrderedJSON(value string) (OrderedValues, error) {
 func scalarString(value any) string {
 	switch typed := value.(type) {
 	case nil:
-		return "None"
+		return "null"
 	case bool:
 		if typed {
-			return "True"
+			return "true"
 		}
-		return "False"
+		return "false"
 	case string:
 		return typed
 	default:

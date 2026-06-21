@@ -60,7 +60,7 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 		path := *endpoint.Path
 		for _, match := range pathParameterPattern.FindAllStringSubmatch(path, -1) {
 			if value, found := parameters.Delete(match[1]); found {
-				path = strings.ReplaceAll(path, match[0], scalarString(value))
+				path = strings.ReplaceAll(path, match[0], url.PathEscape(scalarString(value)))
 			}
 		}
 		unresolved := pathParameterPattern.FindAllStringSubmatch(path, -1)
@@ -217,35 +217,48 @@ func responseHeaders(headers http.Header) map[string]string {
 	return result
 }
 
-func (client *APIClient) executeCollection(path string) (map[string]any, error) {
+func (client *APIClient) executeCollection(path string) ([]map[string]any, error) {
 	collection, err := loadCollection(path)
 	if err != nil {
 		return nil, err
 	}
-	results := map[string]any{}
+	results := make([]map[string]any, 0, len(collection.Requests))
 	for _, item := range collection.Requests {
 		definition, buildErr := client.buildRequest(item.Endpoint, item.BodyFile, item.Params, item.Headers)
 		if buildErr != nil {
-			results[item.Endpoint] = map[string]any{"success": false, "error": buildErr.Error()}
+			results = append(results, map[string]any{
+				"endpoint": item.Endpoint,
+				"success":  false,
+				"error":    buildErr.Error(),
+			})
 			continue
 		}
 		response, requestErr := client.execute(definition)
 		if requestErr != nil {
-			results[item.Endpoint] = map[string]any{"success": false, "error": requestErr.Error()}
+			results = append(results, map[string]any{
+				"endpoint": item.Endpoint,
+				"success":  false,
+				"error":    requestErr.Error(),
+			})
 			continue
 		}
 		parsed, _, parseErr := parseResponse(response)
 		response.Body.Close()
 		if parseErr != nil {
-			results[item.Endpoint] = map[string]any{"success": false, "error": parseErr.Error()}
+			results = append(results, map[string]any{
+				"endpoint": item.Endpoint,
+				"success":  false,
+				"error":    parseErr.Error(),
+			})
 			continue
 		}
-		results[item.Endpoint] = map[string]any{
+		results = append(results, map[string]any{
+			"endpoint":    item.Endpoint,
 			"status_code": response.StatusCode,
 			"success":     response.StatusCode >= 200 && response.StatusCode < 400,
 			"response":    parsed,
 			"headers":     responseHeaders(response.Header),
-		}
+		})
 	}
 	return results, nil
 }
