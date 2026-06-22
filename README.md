@@ -249,7 +249,7 @@ endpoints:
 
 Notes:
 
-- API configs and collections are validated according to the JSON Schemas in `schemas/` before execution.
+- API configs and collections are validated before execution; the JSON Schemas in `schemas/` document the same expected contract for editor and tooling integrations.
 - Unknown fields are allowed for forward-compatible metadata, but known fields and required values must match the schema.
 - `${API_TOKEN}` style placeholders are expanded from environment variables when the config loads.
 - `~/.config/apix/.env` is loaded automatically when the CLI starts, and existing shell variables win if both are set.
@@ -260,6 +260,7 @@ Notes:
 - If a response JSON object contains `access_token`, the tool updates the referenced variable in `~/.config/apix/.env` when `auth.token` uses `${ENV_VAR}` syntax.
 - Multiple APIs can all return `access_token`; keep them separate by using different env vars such as `${GITHUB_TOKEN}` and `${SLACK_TOKEN}` in each config.
 - Request and response previews are JSON-shaped in CLI output for readability.
+- Collection output is an ordered JSON array, so repeated endpoints are preserved.
 
 ## Real Example
 
