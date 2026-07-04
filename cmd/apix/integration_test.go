@@ -122,7 +122,7 @@ func compatibilityServer(t *testing.T) (*httptest.Server, <-chan receivedRequest
 
 func TestCLIRequestPreviewRedactsSecrets(t *testing.T) {
 	directory := t.TempDir()
-	result := runCLI(t, directory, compatibilityEnv("http://example.invalid"), fixturePath(t, "api.yaml"), "inspect", "--request-preview", "--params", `{"id":"99","page":2}`)
+	result := runCLI(t, directory, compatibilityEnv("http://example.invalid"), "preview", fixturePath(t, "api.yaml"), "inspect", "--params", `{"id":"99","page":2}`)
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
@@ -136,14 +136,17 @@ func TestCLIRequestPreviewRedactsSecrets(t *testing.T) {
 	}
 }
 
-func TestCLIDryRunAliasStillPreviewsRequests(t *testing.T) {
+func TestCLIShorthandAllowsCommandNamedEndpoints(t *testing.T) {
 	directory := t.TempDir()
-	result := runCLI(t, directory, compatibilityEnv("http://example.invalid"), fixturePath(t, "api.yaml"), "health", "--dry-run")
-	if result.exitCode != 0 {
-		t.Fatal(result.stderr)
+	configPath := filepath.Join(directory, "api.yaml")
+	config := "endpoints:\n  preview:\n    method: GET\n    url: http://example.invalid/preview\n"
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(result.stdout, "Request Preview:") {
-		t.Fatalf("stdout missing request preview:\n%s", result.stdout)
+
+	result := runCLI(t, directory, nil, configPath, "preview", "--output", filepath.Join(directory, "response.json"))
+	if result.exitCode != 1 || !strings.Contains(result.stderr, "example.invalid/preview") {
+		t.Fatalf("expected shorthand to resolve preview as endpoint, got %#v", result)
 	}
 }
 
@@ -153,7 +156,7 @@ func TestCLIVersion(t *testing.T) {
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
-	if result.stdout != "apix dev (commit none, built unknown)\n" {
+	if result.stdout != "apix 0.4.0 (commit none, built unknown)\n" {
 		t.Fatalf("unexpected version output: %q", result.stdout)
 	}
 }
@@ -199,7 +202,7 @@ func TestCLIBasicAuthAndCollections(t *testing.T) {
 		t.Fatalf("unexpected auth header %q", request.Headers.Get("Authorization"))
 	}
 
-	result = runCLI(t, directory, compatibilityEnv(server.URL), fixturePath(t, "api.yaml"), "--collection", fixturePath(t, "collection.yaml"))
+	result = runCLI(t, directory, compatibilityEnv(server.URL), "collection", fixturePath(t, "api.yaml"), fixturePath(t, "collection.yaml"))
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
@@ -282,16 +285,16 @@ func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configHome, ".env"), []byte("DOTENV_TOKEN=file-token\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result := runCLI(t, directory, nil, configPath, "health", "--request-preview")
+	result := runCLI(t, directory, nil, "preview", configPath, "health")
 	if result.exitCode != 0 || !strings.Contains(result.stdout, `"X-Dotenv-Value": "file-token"`) {
 		t.Fatalf("dotenv was not loaded: %#v", result)
 	}
-	result = runCLI(t, directory, map[string]string{"DOTENV_TOKEN": "shell-token"}, configPath, "health", "--request-preview")
+	result = runCLI(t, directory, map[string]string{"DOTENV_TOKEN": "shell-token"}, "preview", configPath, "health")
 	if !strings.Contains(result.stdout, `"X-Dotenv-Value": "shell-token"`) {
 		t.Fatalf("shell value did not win: %s", result.stdout)
 	}
 
-	result = runCLI(t, directory, nil, "--init-config", "github")
+	result = runCLI(t, directory, nil, "init", "github")
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
@@ -307,7 +310,7 @@ func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(defaultConfigDirectory, "compat.yaml"), fixture, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, arguments := range [][]string{{"--list-configs"}, {"compat", "--list"}, {"compat", "--describe", "health"}} {
+	for _, arguments := range [][]string{{"configs"}, {"list", "compat"}, {"describe", "compat", "health"}} {
 		result = runCLI(t, directory, compatibilityEnv("http://example.invalid"), arguments...)
 		if result.exitCode != 0 {
 			t.Fatal(result.stderr)
@@ -321,7 +324,7 @@ func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configDirectory, "compat.yaml"), fixture, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, arguments := range [][]string{{"--config-dir", configDirectory, "--list-configs"}, {"--config-dir", configDirectory, "compat", "--list"}, {"--config-dir", configDirectory, "compat", "--describe", "health"}} {
+	for _, arguments := range [][]string{{"--config-dir", configDirectory, "configs"}, {"--config-dir", configDirectory, "list", "compat"}, {"--config-dir", configDirectory, "describe", "compat", "health"}} {
 		result = runCLI(t, directory, compatibilityEnv("http://example.invalid"), arguments...)
 		if result.exitCode != 0 {
 			t.Fatal(result.stderr)
@@ -336,9 +339,9 @@ func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
 		arguments []string
 		message   string
 	}{
-		{[]string{fixturePath(t, "api.yaml"), "health", "--params", "{invalid"}, "Invalid JSON for --params"},
-		{[]string{fixturePath(t, "api.yaml"), "health", "--params", `{"page":1} garbage`}, "Invalid JSON for --params"},
-		{[]string{fixturePath(t, "api.yaml"), "health", "--headers", `{"X-Test":"value"} garbage`}, "Invalid JSON for --headers"},
+		{[]string{fixturePath(t, "api.yaml"), "health", "--params", "{invalid"}, "invalid JSON for --params"},
+		{[]string{fixturePath(t, "api.yaml"), "health", "--params", `{"page":1} garbage`}, "invalid JSON for --params"},
+		{[]string{fixturePath(t, "api.yaml"), "health", "--headers", `{"X-Test":"value"} garbage`}, "invalid JSON for --headers"},
 		{[]string{invalidConfig, "broken"}, "'method' is a required property"},
 	} {
 		result = runCLI(t, directory, compatibilityEnv("http://example.invalid"), test.arguments...)

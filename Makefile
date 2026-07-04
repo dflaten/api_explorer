@@ -1,8 +1,9 @@
 GO ?= go
 GORELEASER ?= goreleaser
+STATICCHECK ?= $(shell $(GO) env GOPATH)/bin/staticcheck
 BINARY = bin/apix
 
-.PHONY: build test compat vet format check release-check release-snapshot clean
+.PHONY: build test compat vet staticcheck format check release-check release-snapshot clean
 
 build:
 	mkdir -p bin
@@ -17,10 +18,13 @@ compat: build
 vet:
 	$(GO) vet ./...
 
+staticcheck:
+	$(STATICCHECK) ./...
+
 format:
 	$(GO) fmt ./...
 
-check: format vet test
+check: format vet staticcheck test
 
 release-check:
 	$(GORELEASER) check

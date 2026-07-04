@@ -60,7 +60,7 @@ func TestBuildRequestRejectsMissingPathParameter(t *testing.T) {
 	client := testClient(t)
 	client.Config.Endpoints["user"].Params = OrderedValues{Entries: []ValueEntry{{Key: "expand", Value: "teams"}}}
 	_, err := client.buildRequest("user", "", OrderedValues{}, nil)
-	if err == nil || err.Error() != "Missing path parameter values: id" {
+	if err == nil || err.Error() != "missing path parameter values: id" {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
