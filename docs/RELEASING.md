@@ -6,9 +6,10 @@ The repository uses GoReleaser and GitHub Actions to publish release archives fr
 
 ## Release Requirements
 
-Normal development requires Git, Go 1.26 or newer, and Make. Local release validation additionally requires GoReleaser v2:
+Normal development uses Git, Go 1.26 or newer, Make, and Staticcheck. Local release validation additionally requires GoReleaser v2:
 
 ```bash
+go install honnef.co/go/tools/cmd/staticcheck@latest
 go install github.com/goreleaser/goreleaser/v2@latest
 ```
 
@@ -18,6 +19,7 @@ Ensure `$(go env GOPATH)/bin` is on `PATH`, then verify the tools:
 git --version
 go version
 make --version
+staticcheck -version
 goreleaser --version
 ```
 
@@ -52,7 +54,7 @@ The Go program exposes a `--version` option backed by build metadata variables:
 
 ```go
 var (
-	version = "dev"
+	version = "0.4.0"
 	commit  = "none"
 	date    = "unknown"
 )
@@ -61,7 +63,7 @@ var (
 GoReleaser will set them through linker flags. The CLI should print something similar to:
 
 ```text
-apix 0.3.0 (commit abc1234, built 2026-06-14T12:00:00Z)
+apix 0.4.0 (commit abc1234, built 2026-06-14T12:00:00Z)
 ```
 
 Native Go and CLI integration tests cover `--version`.
@@ -149,6 +151,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install Staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Validate source
         run: make check
 
@@ -206,34 +213,34 @@ For stronger validation, run each Linux binary through a container or matching m
 
 1. Merge all intended changes into `main`.
 2. Confirm the `main` branch checks pass.
-3. Choose a semantic version such as `v0.3.0`.
+3. Choose a semantic version such as `v0.4.0`.
 4. Create and push an annotated tag:
 
 ```bash
 git switch main
 git pull --ff-only
-git tag -a v0.3.0 -m "API Explorer v0.3.0"
-git push origin v0.3.0
+git tag -a v0.4.0 -m "API Explorer v0.4.0"
+git push origin v0.4.0
 ```
 
 5. Open the repository's Actions page and monitor the `Release` workflow.
 6. Open the GitHub Releases page and verify the four archives, checksum file, and generated release notes.
 7. Download at least one archive and verify its checksum and executable.
 
-Do not move or reuse a published version tag. If a release is defective, fix the problem and publish a new patch version such as `v0.3.1`.
+Do not move or reuse a published version tag. If a release is defective, fix the problem and publish a new patch version such as `v0.4.1`.
 
 ## Verifying Downloads
 
 Linux users can verify an archive with:
 
 ```bash
-grep 'api-explorer_0.3.0_linux_amd64.tar.gz' checksums.txt | sha256sum --check
+grep 'api-explorer_0.4.0_linux_amd64.tar.gz' checksums.txt | sha256sum --check
 ```
 
 macOS users can use:
 
 ```bash
-grep 'api-explorer_0.3.0_darwin_arm64.tar.gz' checksums.txt | shasum -a 256 --check
+grep 'api-explorer_0.4.0_darwin_arm64.tar.gz' checksums.txt | shasum -a 256 --check
 ```
 
 ## End-User Installation
@@ -241,7 +248,7 @@ grep 'api-explorer_0.3.0_darwin_arm64.tar.gz' checksums.txt | shasum -a 256 --ch
 Linux example:
 
 ```bash
-tar -xzf api-explorer_0.3.0_linux_amd64.tar.gz
+tar -xzf api-explorer_0.4.0_linux_amd64.tar.gz
 sudo install apix /usr/local/bin/apix
 apix --help
 ```
@@ -249,7 +256,7 @@ apix --help
 macOS example:
 
 ```bash
-tar -xzf api-explorer_0.3.0_darwin_arm64.tar.gz
+tar -xzf api-explorer_0.4.0_darwin_arm64.tar.gz
 install -m 755 apix /usr/local/bin/apix
 apix --help
 ```

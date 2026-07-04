@@ -9,7 +9,7 @@ import (
 
 func TestPrintVersionUsesBuildMetadata(t *testing.T) {
 	originalVersion, originalCommit, originalDate := version, commit, date
-	version, commit, date = "0.3.0", "abc1234", "2026-06-14T12:00:00Z"
+	version, commit, date = "0.4.0", "abc1234", "2026-06-14T12:00:00Z"
 	t.Cleanup(func() {
 		version, commit, date = originalVersion, originalCommit, originalDate
 	})
@@ -29,7 +29,7 @@ func TestPrintVersionUsesBuildMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if actual := strings.TrimSpace(string(output)); actual != "apix 0.3.0 (commit abc1234, built 2026-06-14T12:00:00Z)" {
+	if actual := strings.TrimSpace(string(output)); actual != "apix 0.4.0 (commit abc1234, built 2026-06-14T12:00:00Z)" {
 		t.Fatalf("unexpected version output: %q", actual)
 	}
 }

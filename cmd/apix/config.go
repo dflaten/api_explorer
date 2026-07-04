@@ -236,7 +236,7 @@ func validateParamsNode(node *yaml.Node, label, location string) error {
 }
 
 func invalid(label, location, message string) error {
-	return fmt.Errorf("Invalid %s at %s: %s", label, location, message)
+	return fmt.Errorf("invalid %s at %s: %s", label, location, message)
 }
 
 func documentValue(root *yaml.Node) *yaml.Node {

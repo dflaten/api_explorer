@@ -35,7 +35,7 @@ go install ./cmd/apix
 Create a starter API config:
 
 ```bash
-apix --init-config github
+apix init github
 ```
 
 Add local secrets:
@@ -48,9 +48,9 @@ cp .env.example ~/.config/apix/.env
 Edit `~/.config/apix/.env`, then inspect and run the API:
 
 ```bash
-apix --list-configs
-apix github --list
-apix github health --request-preview
+apix configs
+apix list github
+apix preview github health
 apix github health
 ```
 
@@ -78,7 +78,7 @@ endpoints:
 Run it:
 
 ```bash
-apix github --describe get_repo
+apix describe github get_repo
 apix github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 ```
 
@@ -86,11 +86,11 @@ apix github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 
 | Command | Purpose |
 | --- | --- |
-| `apix --init-config NAME` | Create `~/.config/apix/configs/NAME.yaml` |
-| `apix --list-configs` | Show available config aliases |
-| `apix NAME --list` | List endpoints in a config |
-| `apix NAME --describe ENDPOINT` | Show endpoint details without sending a request |
-| `apix NAME ENDPOINT --request-preview` | Print the request that would be sent |
+| `apix init NAME` | Create `~/.config/apix/configs/NAME.yaml` |
+| `apix configs` | Show available config aliases |
+| `apix list NAME` | List endpoints in a config |
+| `apix describe NAME ENDPOINT` | Show endpoint details without sending a request |
+| `apix preview NAME ENDPOINT` | Print the request that would be sent |
 | `apix NAME ENDPOINT` | Execute an endpoint |
 | `apix PATH.yaml ENDPOINT` | Use an explicit config path |
 | `apix --config-dir PATH NAME ENDPOINT` | Resolve aliases from another directory |
@@ -106,7 +106,7 @@ Run `apix --help` for all flags and examples.
 
 ## Development
 
-Normal development prerequisites are Git, Go 1.26 or newer, and Make. GoReleaser v2 is only needed for local release validation and snapshot builds.
+Normal development uses Git, Go 1.26 or newer, Make, and Staticcheck. GoReleaser v2 is only needed for local release validation and snapshot builds.
 
 Common repo tasks:
 

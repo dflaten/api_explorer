@@ -69,7 +69,7 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 			for _, match := range unresolved {
 				names = append(names, match[1])
 			}
-			return nil, fmt.Errorf("Missing path parameter values: %s", strings.Join(names, ", "))
+			return nil, fmt.Errorf("missing path parameter values: %s", strings.Join(names, ", "))
 		}
 		baseURL := endpoint.BaseURL
 		if baseURL == "" {

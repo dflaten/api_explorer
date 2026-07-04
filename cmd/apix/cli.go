@@ -14,18 +14,15 @@ import (
 )
 
 type options struct {
+	Command        string
 	Targets        []string
 	Body           string
 	Params         string
 	Headers        string
-	Collection     string
 	ConfigDir      string
-	ListConfigs    bool
-	List           bool
-	Describe       string
 	RequestPreview bool
-	InitConfig     string
 	Output         string
+	OutputSet      bool
 	Verbose        bool
 	Help           bool
 	Version        bool
@@ -44,8 +41,7 @@ func parseOptions(arguments []string) (options, error) {
 	result := options{Output: "response.json"}
 	valueOptions := map[string]*string{
 		"--body": &result.Body, "--params": &result.Params, "--headers": &result.Headers,
-		"--collection": &result.Collection, "--config-dir": &result.ConfigDir,
-		"--describe": &result.Describe, "--init-config": &result.InitConfig, "--output": &result.Output,
+		"--config-dir": &result.ConfigDir, "--output": &result.Output,
 	}
 	for index := 0; index < len(arguments); index++ {
 		argument := arguments[index]
@@ -55,29 +51,42 @@ func parseOptions(arguments []string) (options, error) {
 				return result, fmt.Errorf("argument %s: expected one argument", argument)
 			}
 			*target = arguments[index]
+			if argument == "--output" {
+				result.OutputSet = true
+			}
 			continue
 		}
 		switch argument {
-		case "--list-configs":
-			result.ListConfigs = true
-		case "--list":
-			result.List = true
-		case "--request-preview", "--dry-run":
-			result.RequestPreview = true
-		case "--verbose", "-v":
-			result.Verbose = true
 		case "--help", "-h":
 			result.Help = true
 		case "--version":
 			result.Version = true
+		case "--verbose", "-v":
+			result.Verbose = true
 		default:
 			if strings.HasPrefix(argument, "-") {
 				return result, fmt.Errorf("unrecognized arguments: %s", argument)
 			}
-			result.Targets = append(result.Targets, argument)
+			if result.Command == "" && len(result.Targets) == 0 && isCommand(argument) {
+				result.Command = argument
+			} else {
+				result.Targets = append(result.Targets, argument)
+			}
 		}
 	}
+	if result.Command == "" && len(result.Targets) > 0 {
+		result.Command = "run"
+	}
 	return result, nil
+}
+
+func isCommand(argument string) bool {
+	switch argument {
+	case "init", "configs", "list", "describe", "preview", "run", "collection":
+		return true
+	default:
+		return false
+	}
 }
 
 func run(arguments []string) error {
@@ -99,8 +108,15 @@ func run(arguments []string) error {
 	if err := loadEnvFile(defaultEnvFile()); err != nil {
 		return err
 	}
-	if options.InitConfig != "" {
-		path, err := resolveInitConfigPath(options.InitConfig, options.ConfigDir)
+	switch options.Command {
+	case "init":
+		if err := rejectRequestOptions(options, "init"); err != nil {
+			return err
+		}
+		if len(options.Targets) != 1 {
+			return fmt.Errorf("usage: apix init NAME|PATH")
+		}
+		path, err := resolveInitConfigPath(options.Targets[0], options.ConfigDir)
 		if err != nil {
 			return err
 		}
@@ -110,15 +126,75 @@ func run(arguments []string) error {
 		fmt.Printf("Created starter config at %s\n", path)
 		fmt.Println("Replace placeholders like ${API_TOKEN} with environment variables before calling the API.")
 		return nil
-	}
-	if options.ListConfigs {
-		if len(options.Targets) > 0 {
-			return fmt.Errorf("--list-configs does not take positional arguments")
+	case "configs":
+		if err := rejectRequestOptions(options, "configs"); err != nil {
+			return err
+		}
+		if len(options.Targets) != 0 {
+			return fmt.Errorf("usage: apix configs")
 		}
 		return printConfigList(options.ConfigDir)
+	case "list":
+		if err := rejectRequestOptions(options, "list"); err != nil {
+			return err
+		}
+		configPath, err := resolveConfigTarget(options.Targets, options.ConfigDir)
+		if err != nil {
+			return err
+		}
+		client, err := newAPIClient(configPath)
+		if err != nil {
+			return err
+		}
+		printEndpointList(client)
+		return nil
+	case "describe":
+		if err := rejectRequestOptions(options, "describe"); err != nil {
+			return err
+		}
+		configPath, endpointName, err := resolveEndpointTargets(options.Targets, options.ConfigDir, "describe")
+		if err != nil {
+			return err
+		}
+		client, err := newAPIClient(configPath)
+		if err != nil {
+			return err
+		}
+		return printEndpointDetails(client, endpointName)
+	case "preview":
+		if err := rejectResponseOptions(options, "preview"); err != nil {
+			return err
+		}
+		options.RequestPreview = true
+		return executeEndpoint(options, "preview")
+	case "run":
+		return executeEndpoint(options, "run")
+	case "collection":
+		if err := rejectRequestOptions(options, "collection"); err != nil {
+			return err
+		}
+		configPath, collectionPath, err := resolveCollectionTargets(options.Targets, options.ConfigDir)
+		if err != nil {
+			return err
+		}
+		client, err := newAPIClient(configPath)
+		if err != nil {
+			return err
+		}
+		results, err := client.executeCollection(collectionPath)
+		if err != nil {
+			return err
+		}
+		return printJSON(results)
+	case "":
+		return fmt.Errorf("usage: apix COMMAND [arguments]")
+	default:
+		return fmt.Errorf("unknown command: %s", options.Command)
 	}
+}
 
-	configPath, endpointName, err := resolveTargets(options)
+func executeEndpoint(options options, command string) error {
+	configPath, endpointName, err := resolveEndpointTargets(options.Targets, options.ConfigDir, command)
 	if err != nil {
 		return err
 	}
@@ -126,41 +202,23 @@ func run(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if options.List {
-		printEndpointList(client)
-		return nil
-	}
-	if options.Describe != "" {
-		return printEndpointDetails(client, options.Describe)
-	}
-	if options.Collection != "" {
-		results, err := client.executeCollection(options.Collection)
-		if err != nil {
-			return err
-		}
-		return printJSON(results)
-	}
-	if endpointName == "" {
-		return fmt.Errorf("Provide an endpoint name, or use --list / --describe / --collection")
-	}
-
 	parameters := OrderedValues{}
 	if options.Params != "" {
 		parameters, err = parseOrderedJSON(options.Params)
 		if err != nil {
-			return fmt.Errorf("Invalid JSON for --params: %w", err)
+			return fmt.Errorf("invalid JSON for --params: %w", err)
 		}
 	}
 	headers := map[string]string{}
 	if options.Headers != "" {
 		parsed, parseErr := parseOrderedJSON(options.Headers)
 		if parseErr != nil {
-			return fmt.Errorf("Invalid JSON for --headers: %w", parseErr)
+			return fmt.Errorf("invalid JSON for --headers: %w", parseErr)
 		}
 		for _, entry := range parsed.Entries {
 			value, ok := entry.Value.(string)
 			if !ok {
-				return fmt.Errorf("Invalid JSON for --headers: header values must be strings")
+				return fmt.Errorf("invalid JSON for --headers: header values must be strings")
 			}
 			headers[entry.Key] = value
 		}
@@ -202,48 +260,50 @@ func run(arguments []string) error {
 	return nil
 }
 
-func resolveTargets(options options) (string, string, error) {
-	if options.List {
-		if len(options.Targets) == 0 {
-			return defaultConfigFile(), "", nil
-		}
-		if len(options.Targets) == 1 {
-			path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
-			return path, "", err
-		}
-		return "", "", fmt.Errorf("Too many positional arguments. Use [config] with --list")
+func rejectRequestOptions(options options, command string) error {
+	if options.Body != "" || options.Params != "" || options.Headers != "" || options.OutputSet || options.Verbose {
+		return fmt.Errorf("request options are not valid for %s", command)
 	}
-	if options.Describe != "" {
-		if len(options.Targets) > 1 {
-			return "", "", fmt.Errorf("Use --describe ENDPOINT with an optional [config] positional argument")
-		}
-		if len(options.Targets) == 0 {
-			return defaultConfigFile(), "", nil
-		}
-		path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
-		return path, "", err
+	return nil
+}
+
+func rejectResponseOptions(options options, command string) error {
+	if options.OutputSet || options.Verbose {
+		return fmt.Errorf("response options are not valid for %s", command)
 	}
-	if options.Collection != "" {
-		if len(options.Targets) > 1 {
-			return "", "", fmt.Errorf("Collection mode accepts at most one positional argument: [config]")
-		}
-		if len(options.Targets) == 0 {
-			return defaultConfigFile(), "", nil
-		}
-		path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
-		return path, "", err
+	return nil
+}
+
+func resolveConfigTarget(targets []string, configDirectory string) (string, error) {
+	if len(targets) == 0 {
+		return defaultConfigFile(), nil
 	}
-	if len(options.Targets) == 0 {
-		return "", "", fmt.Errorf("Provide an endpoint name, or use --list / --describe / --init-config")
+	if len(targets) == 1 {
+		return resolveConfigPath(targets[0], configDirectory)
 	}
-	if len(options.Targets) == 1 {
-		return defaultConfigFile(), options.Targets[0], nil
+	return "", fmt.Errorf("usage: apix list [config]")
+}
+
+func resolveEndpointTargets(targets []string, configDirectory, command string) (string, string, error) {
+	if len(targets) == 1 {
+		return defaultConfigFile(), targets[0], nil
 	}
-	if len(options.Targets) == 2 {
-		path, err := resolveConfigPath(options.Targets[0], options.ConfigDir)
-		return path, options.Targets[1], err
+	if len(targets) == 2 {
+		path, err := resolveConfigPath(targets[0], configDirectory)
+		return path, targets[1], err
 	}
-	return "", "", fmt.Errorf("Too many positional arguments. Use [endpoint] or [config endpoint]")
+	return "", "", fmt.Errorf("usage: apix %s [config] endpoint", command)
+}
+
+func resolveCollectionTargets(targets []string, configDirectory string) (string, string, error) {
+	if len(targets) == 1 {
+		return defaultConfigFile(), targets[0], nil
+	}
+	if len(targets) == 2 {
+		path, err := resolveConfigPath(targets[0], configDirectory)
+		return path, targets[1], err
+	}
+	return "", "", fmt.Errorf("usage: apix collection [config] PATH")
 }
 
 func resolveConfigPath(specification, configDirectory string) (string, error) {
@@ -263,7 +323,7 @@ func resolveConfigPath(specification, configDirectory string) (string, error) {
 	if isExplicitConfigPath(specification) {
 		return path, nil
 	}
-	return "", fmt.Errorf("Unknown config alias '%s'. Use --list-configs to see available configs.", specification)
+	return "", fmt.Errorf("unknown config alias %q; use 'apix configs' to see available configs", specification)
 }
 
 func fileExists(path string) bool { info, err := os.Stat(path); return err == nil && !info.IsDir() }
@@ -544,7 +604,7 @@ func updateEnvValue(path, key, value string) error {
 
 func writeConfigTemplate(path string) error {
 	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("Refusing to overwrite existing file: %s", path)
+		return fmt.Errorf("refusing to overwrite existing file: %s", path)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -553,32 +613,41 @@ func writeConfigTemplate(path string) error {
 }
 
 func printHelp() {
-	fmt.Print(`usage: apix [options] [endpoint] | [config endpoint]
+	fmt.Print(`usage: apix [global options] COMMAND [arguments]
+       apix [global options] [config] endpoint [request options]
 
 CLI API explorer for YAML-defined API configs.
 
-Options:
+Commands:
+  init NAME|PATH               Create a starter YAML config
+  configs                      List available config aliases
+  list [config]                List configured endpoints
+  describe [config] endpoint   Describe an endpoint without executing it
+  preview [config] endpoint    Preview a request without sending it
+  run [config] endpoint        Execute an endpoint
+  collection [config] PATH     Execute a YAML request collection
+
+Request options:
   --body PATH             Path to a JSON body file
   --params JSON           Query parameter overrides
   --headers JSON          Header overrides
-  --collection PATH       Execute a YAML request collection
-  --config-dir PATH       Config alias directory (default: ~/.config/apix/configs)
-  --list-configs          List available config aliases
-  --list                  List configured endpoints
-  --describe ENDPOINT     Describe an endpoint without executing it
-  --request-preview       Preview a request without sending it
-  --init-config NAME|PATH Create a starter YAML config
+
+Response options:
   --output PATH           Response output path (default: response.json)
   --verbose, -v           Print response headers
+
+Global options:
+  --config-dir PATH       Config alias directory (default: ~/.config/apix/configs)
   --version               Show version and build information
   --help, -h              Show this help
 
 Examples:
-  apix --init-config github
-  apix --list-configs
-  apix github --list
-  apix github --describe get_repo
-  apix github get_repo --request-preview
+  apix init github
+  apix configs
+  apix list github
+  apix describe github get_repo
+  apix preview github get_repo
+  apix run github get_repo --params '{"owner":"octocat"}'
   apix github get_repo --params '{"owner":"octocat"}'
 `)
 }

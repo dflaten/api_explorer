@@ -168,7 +168,7 @@ func TestWriteConfigTemplateCreatesValidConfig(t *testing.T) {
 	if _, ok := config.Endpoints["health"]; !ok {
 		t.Fatal("generated config does not contain health endpoint")
 	}
-	if err := writeConfigTemplate(path); err == nil || !strings.Contains(err.Error(), "Refusing to overwrite") {
+	if err := writeConfigTemplate(path); err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
 		t.Fatalf("expected overwrite error, got %v", err)
 	}
 }

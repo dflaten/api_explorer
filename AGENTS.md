@@ -7,7 +7,7 @@ This repository is a Go CLI project. Use these conventions when working here:
 - Build the local binary with `make build`.
 - Run the main verification flow with `make check`.
 - Run the compatibility suite with `make compat`.
-- Run Go-only checks directly with `go vet ./...` and `go test ./...`.
+- Run Go-only checks directly with `go vet ./...`, `staticcheck ./...`, and `go test ./...`.
 - Build a release snapshot with `make release-snapshot`.
 - Validate the release config with `make release-check`.
 
@@ -15,8 +15,8 @@ This repository is a Go CLI project. Use these conventions when working here:
 
 - The installed command is `apix`.
 - Source builds use `go install ./cmd/apix`.
-- GoReleaser v2 is required for local release validation and snapshot builds.
-- Git, Go 1.26+, and Make are the normal development prerequisites.
+- Normal development uses Git, Go 1.26+, Make, and Staticcheck.
+- GoReleaser v2 is required only for local release validation and snapshot builds.
 
 ## Release Flow
 
