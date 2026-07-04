@@ -1,229 +1,62 @@
 # API Explorer
 
-A lightweight Go CLI for exploring and testing HTTP APIs. Define each API in YAML, preview requests before sending them in JSON-shaped output, and keep API secrets in environment variables instead of hardcoding them.
+<p align="center">
+  <img alt="CLI" src="https://img.shields.io/badge/cli-apix-0f766e" />
+  <img alt="Language" src="https://img.shields.io/badge/language-Go-2563eb" />
+  <img alt="Config" src="https://img.shields.io/badge/config-YAML-f59e0b" />
+  <img alt="Secrets" src="https://img.shields.io/badge/secrets-.env-7c3aed" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-go%20%2B%20compat-16a34a" />
+</p>
 
-## Features
+`apix` is a Go CLI for exploring and testing HTTP APIs from reusable YAML configs.
 
-- 📁 One YAML config per API, with alias-based selection from `~/.config/apix/configs/`
-- 🔍 JSON-shaped request previews with `--request-preview`
-- 🧭 Endpoint discovery with `--list` and `--describe`
-- 🔐 Local secret loading from `~/.config/apix/.env`
-- 📦 Batch request execution with YAML collections
-- 💾 Response saving to `response.json` or a custom `--output` path
-- 🔑 Built-in auth support for bearer and basic auth
+Define an API once, keep secrets in environment variables, preview the exact request, and then send it from the terminal.
 
-## Development Setup
+| Item | Details |
+| --- | --- |
+| Command | `apix` |
+| Config format | YAML API definitions |
+| Default config home | `~/.config/apix` |
+| API aliases | Files in `~/.config/apix/configs/` |
+| Secrets | `~/.config/apix/.env` and `${ENV_VAR}` placeholders |
+| Request workflow | List, describe, preview, execute, save response |
+| Validation | Go tests, compatibility tests, and JSON schemas |
 
-### Requirements
+`apix` currently supports named API configs, request previews, bearer and basic auth, endpoint and CLI parameter merging, YAML request collections, response saving, and access-token persistence back into the local `.env` file.
 
-| Tool | Required version | Used for |
-| --- | --- | --- |
-| Git | Current supported release | Cloning, branches, tags, and publishing release tags |
-| Go | 1.26 or newer | Building, installing, formatting, vetting, and testing |
-| Make | Any modern GNU Make | Running the repository's standard development commands |
-| GoReleaser | v2 | Validating and creating release artifacts locally |
+## Quick Start
 
-GoReleaser is only required for `make release-check` and `make release-snapshot`. GitHub Actions installs it automatically when publishing a tagged release.
-
-Ubuntu/Debian example for Git and Make:
-
-```bash
-sudo apt update
-sudo apt install git make
-```
-
-macOS provides Git and Make through the Xcode command-line tools:
-
-```bash
-xcode-select --install
-```
-
-Install Go using the instructions at [go.dev/doc/install](https://go.dev/doc/install), then install GoReleaser v2:
-
-```bash
-go install github.com/goreleaser/goreleaser/v2@latest
-```
-
-Both `apix` and `goreleaser` are installed into `$(go env GOPATH)/bin`, which is usually `~/go/bin`. Add that directory to your shell's `PATH` once.
-
-Fish:
-
-```fish
-fish_add_path (go env GOPATH)/bin
-```
-
-Bash:
-
-```bash
-echo 'export PATH="$(go env GOPATH)/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-Zsh:
-
-```zsh
-echo 'export PATH="$(go env GOPATH)/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-Verify the development tools:
-
-```bash
-git --version
-go version
-make --version
-goreleaser --version
-```
-
-### Install From Source
-
-Clone the repository, then run the following command from the repository root:
+Install from source:
 
 ```bash
 go install ./cmd/apix
 ```
 
-Verify the installation:
-
-```bash
-apix --help
-```
-
-After changing the source, run `go install ./cmd/apix` again to update the command installed in your shell. `make build` is also available when you only need a repository-local binary at `bin/apix`.
-
-The GitHub CLI (`gh`) is optional. It can be used to inspect workflow runs and releases, but it is not required to build or publish because pushing a version tag triggers the release workflow.
-
-## Fast Start
-
-Create a named API config in the default config directory:
+Create a starter API config:
 
 ```bash
 apix --init-config github
 ```
 
-Create the default config directory and `.env` file from the example template:
+Add local secrets:
 
 ```bash
 mkdir -p ~/.config/apix
 cp .env.example ~/.config/apix/.env
 ```
 
-Edit `~/.config/apix/.env` with the tokens or API keys referenced by your config.
-
-By default, `apix` uses `~/.config/apix` on Linux and macOS. API aliases are read from `~/.config/apix/configs`, and `--config-dir` can point aliases at another directory when needed.
-
-List available config files:
+Edit `~/.config/apix/.env`, then inspect and run the API:
 
 ```bash
 apix --list-configs
-```
-
-Describe an endpoint without sending anything:
-
-```bash
-apix github --describe health
-```
-
-Preview the exact request that would be sent:
-
-```bash
+apix github --list
 apix github health --request-preview
-```
-
-Execute a request:
-
-```bash
 apix github health
 ```
 
-Use an explicit config path:
+## Example Config
 
-```bash
-apix ~/.config/apix/configs/newsapi.yaml top_headlines
-```
-
-## Set Up A New API
-
-1. Create a config file for the API:
-
-```bash
-apix --init-config my_api
-```
-
-2. Update the top-level settings:
-
-- Set `base_url` to the API root URL
-- Add any shared auth or required headers under `default_headers`
-- If the API uses bearer auth, prefer an environment variable such as `${MY_API_TOKEN}`
-
-Example:
-
-```yaml
-base_url: https://api.example.com/v1
-timeout: 30
-default_headers:
-  Content-Type: application/json
-  X-API-KEY: ${MY_API_KEY}
-```
-
-3. Add one or two starter endpoints under `endpoints`:
-
-```yaml
-endpoints:
-  health:
-    method: GET
-    path: /health
-    description: Basic connectivity check
-  get_user:
-    method: GET
-    path: /users/{id}
-    params:
-      id: "123"
-```
-
-4. Add secrets to `~/.config/apix/.env`:
-
-```dotenv
-MY_API_KEY=your_key_here
-```
-
-5. Confirm the config is discoverable:
-
-```bash
-apix --list-configs
-apix my_api --list
-```
-
-6. Preview the request before sending it:
-
-```bash
-apix my_api get_user --request-preview
-```
-
-7. Run the endpoint:
-
-```bash
-apix my_api get_user
-```
-
-Tips:
-
-- Start with a simple `health`, `me`, or `list` endpoint before adding write operations.
-- Put large request payloads in separate JSON files and pass them with `--body`.
-- Use endpoint `description` fields so `--list` output stays readable.
-- Keep secrets in `~/.config/apix/.env`, not in the checked-in YAML config.
-
-Run `apix --help` for command patterns and examples.
-
-## Config Format
-
-Each config file represents one API and is written in YAML. Keep separate files such as:
-
-- `~/.config/apix/configs/github.yaml`
-- `~/.config/apix/configs/stripe.yaml`
-- `~/.config/apix/configs/slack.yaml`
-
-Example config:
+Configs live in `~/.config/apix/configs/` by default. A file named `github.yaml` can be called as `apix github ...`.
 
 ```yaml
 base_url: https://api.github.com
@@ -240,113 +73,54 @@ endpoints:
       owner: octocat
       repo: Hello-World
     description: Fetch a repository
-  list_user_repos:
-    method: GET
-    path: /users/{username}/repos
-    params:
-      username: octocat
 ```
 
-Notes:
-
-- API configs and collections are validated before execution; the JSON Schemas in `schemas/` document the same expected contract for editor and tooling integrations.
-- Unknown fields are allowed for forward-compatible metadata, but known fields and required values must match the schema.
-- `${API_TOKEN}` style placeholders are expanded from environment variables when the config loads.
-- `~/.config/apix/.env` is loaded automatically when the CLI starts, and existing shell variables win if both are set.
-- Use a YAML file for each API
-- Config aliases come from filenames inside `~/.config/apix/configs/` by default, so `~/.config/apix/configs/github.yaml` becomes `github`.
-- Path parameters such as `/users/{id}` are filled from the endpoint's `params` block or from `--params`.
-- Endpoint-level `headers`, `params`, and `body` are merged with CLI overrides.
-- If a response JSON object contains `access_token`, the tool updates the referenced variable in `~/.config/apix/.env` when `auth.token` uses `${ENV_VAR}` syntax.
-- Multiple APIs can all return `access_token`; keep them separate by using different env vars such as `${GITHUB_TOKEN}` and `${SLACK_TOKEN}` in each config.
-- Request and response previews are JSON-shaped in CLI output for readability.
-- Collection output is an ordered JSON array, so repeated endpoints are preserved.
-
-## Real Example
-
-Create the default `.env` file and add your NewsAPI key:
+Run it:
 
 ```bash
-mkdir -p ~/.config/apix
-cp .env.example ~/.config/apix/.env
+apix github --describe get_repo
+apix github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 ```
 
-```dotenv
-NEWS_API_KEY=your_newsapi_key_here
-```
+## Common Commands
 
-Then add the API config:
+| Command | Purpose |
+| --- | --- |
+| `apix --init-config NAME` | Create `~/.config/apix/configs/NAME.yaml` |
+| `apix --list-configs` | Show available config aliases |
+| `apix NAME --list` | List endpoints in a config |
+| `apix NAME --describe ENDPOINT` | Show endpoint details without sending a request |
+| `apix NAME ENDPOINT --request-preview` | Print the request that would be sent |
+| `apix NAME ENDPOINT` | Execute an endpoint |
+| `apix PATH.yaml ENDPOINT` | Use an explicit config path |
+| `apix --config-dir PATH NAME ENDPOINT` | Resolve aliases from another directory |
+| `apix NAME ENDPOINT --output out.json` | Save the response body to a custom file |
 
-```yaml
-base_url: https://newsapi.org/v2/
-timeout: 30
-default_headers:
-  Content-Type: application/json
-  X-API-KEY: ${NEWS_API_KEY}
-endpoints:
-  top_headlines:
-    method: GET
-    path: top-headlines
-    params:
-      country: us
-    description: Top US headlines
-```
+Run `apix --help` for all flags and examples.
 
-```bash
-apix newsapi --describe top_headlines
-apix newsapi top_headlines
-```
+## Documentation
 
-NewsAPI endpoint reference: https://newsapi.org/docs/endpoints/top-headlines
+- [Release guide](docs/RELEASING.md)
+- [API config schema](schemas/api-config.schema.json)
+- [Collection schema](schemas/collection.schema.json)
 
-## Development Commands
+## Development
 
-Run tests:
+Normal development prerequisites are Git, Go 1.26 or newer, and Make. GoReleaser v2 is only needed for local release validation and snapshot builds.
 
-```bash
-make test
-```
-
-Run Go static analysis:
-
-```bash
-make vet
-```
-
-Run formatting:
-
-```bash
-make format
-```
-
-Run the full local sequence:
+Common repo tasks:
 
 ```bash
 make check
-```
-
-Run only the black-box compatibility suite:
-
-```bash
 make compat
-```
-
-The native Go compatibility suite checks request previews, HTTP requests, collections, output files, secret redaction, and schema failures.
-
-Validate the GoReleaser configuration:
-
-```bash
 make release-check
-```
-
-Build all release archives locally without publishing:
-
-```bash
 make release-snapshot
 ```
 
-Release snapshots are written to the ignored `dist/` directory.
+Build the installed command from this checkout:
 
-## Releases
+```bash
+go install ./cmd/apix
+```
 
-See [docs/RELEASING.md](docs/RELEASING.md) for the repository-specific plan to publish prebuilt Linux and macOS binaries through GitHub Releases.
+GitHub Releases are created from pushed `v*` tags. Release archives keep the `api-explorer` prefix even though the executable is named `apix`.
