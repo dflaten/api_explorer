@@ -180,6 +180,7 @@ type RequestDefinition struct {
 	Definition       *Endpoint
 	Method           string
 	FullURL          string
+	Path             string
 	Params           OrderedValues
 	EffectiveHeaders map[string]string
 	Timeout          float64

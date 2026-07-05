@@ -184,9 +184,6 @@ func TestDefaultConfigPathsUseHomeConfigDirectory(t *testing.T) {
 	if defaultConfigDir() != filepath.Join(expectedHome, "configs") {
 		t.Fatalf("unexpected config dir: %s", defaultConfigDir())
 	}
-	if defaultConfigFile() != filepath.Join(expectedHome, "config.yaml") {
-		t.Fatalf("unexpected config file: %s", defaultConfigFile())
-	}
 	if defaultEnvFile() != filepath.Join(expectedHome, ".env") {
 		t.Fatalf("unexpected env file: %s", defaultEnvFile())
 	}

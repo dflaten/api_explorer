@@ -30,7 +30,9 @@ type options struct {
 
 var sensitiveHeaders = map[string]bool{
 	"authorization":       true,
+	"cookie":              true,
 	"proxy-authorization": true,
+	"set-cookie":          true,
 	"x-api-key":           true,
 	"api-key":             true,
 }
@@ -67,22 +69,19 @@ func parseOptions(arguments []string) (options, error) {
 			if strings.HasPrefix(argument, "-") {
 				return result, fmt.Errorf("unrecognized arguments: %s", argument)
 			}
-			if result.Command == "" && len(result.Targets) == 0 && isCommand(argument) {
+			if result.Command == "" && len(result.Targets) == 0 && isGlobalCommand(argument) {
 				result.Command = argument
 			} else {
 				result.Targets = append(result.Targets, argument)
 			}
 		}
 	}
-	if result.Command == "" && len(result.Targets) > 0 {
-		result.Command = "run"
-	}
 	return result, nil
 }
 
-func isCommand(argument string) bool {
+func isGlobalCommand(argument string) bool {
 	switch argument {
-	case "init", "configs", "list", "describe", "preview", "run", "collection":
+	case "init", "configs":
 		return true
 	default:
 		return false
@@ -134,70 +133,94 @@ func run(arguments []string) error {
 			return fmt.Errorf("usage: apix configs")
 		}
 		return printConfigList(options.ConfigDir)
-	case "list":
-		if err := rejectRequestOptions(options, "list"); err != nil {
-			return err
-		}
-		configPath, err := resolveConfigTarget(options.Targets, options.ConfigDir)
-		if err != nil {
-			return err
-		}
-		client, err := newAPIClient(configPath)
-		if err != nil {
-			return err
-		}
-		printEndpointList(client)
-		return nil
-	case "describe":
-		if err := rejectRequestOptions(options, "describe"); err != nil {
-			return err
-		}
-		configPath, endpointName, err := resolveEndpointTargets(options.Targets, options.ConfigDir, "describe")
-		if err != nil {
-			return err
-		}
-		client, err := newAPIClient(configPath)
-		if err != nil {
-			return err
-		}
-		return printEndpointDetails(client, endpointName)
-	case "preview":
-		if err := rejectResponseOptions(options, "preview"); err != nil {
-			return err
-		}
-		options.RequestPreview = true
-		return executeEndpoint(options, "preview")
-	case "run":
-		return executeEndpoint(options, "run")
-	case "collection":
-		if err := rejectRequestOptions(options, "collection"); err != nil {
-			return err
-		}
-		configPath, collectionPath, err := resolveCollectionTargets(options.Targets, options.ConfigDir)
-		if err != nil {
-			return err
-		}
-		client, err := newAPIClient(configPath)
-		if err != nil {
-			return err
-		}
-		results, err := client.executeCollection(collectionPath)
-		if err != nil {
-			return err
-		}
-		return printJSON(results)
 	case "":
-		return fmt.Errorf("usage: apix COMMAND [arguments]")
+		return executeAPIScopedCommand(options)
 	default:
 		return fmt.Errorf("unknown command: %s", options.Command)
 	}
 }
 
-func executeEndpoint(options options, command string) error {
-	configPath, endpointName, err := resolveEndpointTargets(options.Targets, options.ConfigDir, command)
+func executeAPIScopedCommand(options options) error {
+	if len(options.Targets) < 2 {
+		return fmt.Errorf("usage: apix API COMMAND [arguments]")
+	}
+	apiName, command := options.Targets[0], options.Targets[1]
+	configPath, err := resolveConfigPath(apiName, options.ConfigDir)
 	if err != nil {
 		return err
 	}
+	switch command {
+	case "list":
+		if err := rejectRequestOptions(options, "list"); err != nil {
+			return err
+		}
+		if len(options.Targets) != 2 {
+			return fmt.Errorf("usage: apix API list")
+		}
+		return withAPIClient(configPath, func(client *APIClient) error {
+			printEndpointList(client)
+			return nil
+		})
+	case "describe":
+		if err := rejectRequestOptions(options, "describe"); err != nil {
+			return err
+		}
+		if len(options.Targets) != 3 {
+			return fmt.Errorf("usage: apix API describe endpoint")
+		}
+		return withAPIClient(configPath, func(client *APIClient) error {
+			return printEndpointDetails(client, options.Targets[2])
+		})
+	case "preview":
+		if err := rejectResponseOptions(options, "preview"); err != nil {
+			return err
+		}
+		if len(options.Targets) != 3 {
+			return fmt.Errorf("usage: apix API preview endpoint")
+		}
+		options.RequestPreview = true
+		return executeResolvedEndpoint(options, configPath, options.Targets[2])
+	case "run":
+		if len(options.Targets) != 3 {
+			return fmt.Errorf("usage: apix API run endpoint")
+		}
+		return executeResolvedEndpoint(options, configPath, options.Targets[2])
+	case "collection":
+		if err := rejectRequestOptions(options, "collection"); err != nil {
+			return err
+		}
+		if len(options.Targets) != 3 {
+			return fmt.Errorf("usage: apix API collection PATH")
+		}
+		return withAPIClient(configPath, func(client *APIClient) error {
+			results, err := client.executeCollection(options.Targets[2])
+			if err != nil {
+				return err
+			}
+			return printJSON(results)
+		})
+	case "logs":
+		if err := rejectRequestOptions(options, "logs"); err != nil {
+			return err
+		}
+		if len(options.Targets) != 2 {
+			return fmt.Errorf("usage: apix API logs")
+		}
+		return printRequestLogs(configPath)
+	default:
+		return fmt.Errorf("unknown API command %q; usage: apix API COMMAND [arguments]", command)
+	}
+}
+
+func withAPIClient(configPath string, execute func(*APIClient) error) error {
+	client, err := newAPIClient(configPath)
+	if err != nil {
+		return err
+	}
+	return execute(client)
+}
+
+func executeResolvedEndpoint(options options, configPath, endpointName string) error {
 	client, err := newAPIClient(configPath)
 	if err != nil {
 		return err
@@ -231,7 +254,7 @@ func executeEndpoint(options options, command string) error {
 	if options.RequestPreview {
 		return nil
 	}
-	response, err := client.execute(definition)
+	response, err := executeWithLog(client, definition)
 	if err != nil {
 		return err
 	}
@@ -272,38 +295,6 @@ func rejectResponseOptions(options options, command string) error {
 		return fmt.Errorf("response options are not valid for %s", command)
 	}
 	return nil
-}
-
-func resolveConfigTarget(targets []string, configDirectory string) (string, error) {
-	if len(targets) == 0 {
-		return defaultConfigFile(), nil
-	}
-	if len(targets) == 1 {
-		return resolveConfigPath(targets[0], configDirectory)
-	}
-	return "", fmt.Errorf("usage: apix list [config]")
-}
-
-func resolveEndpointTargets(targets []string, configDirectory, command string) (string, string, error) {
-	if len(targets) == 1 {
-		return defaultConfigFile(), targets[0], nil
-	}
-	if len(targets) == 2 {
-		path, err := resolveConfigPath(targets[0], configDirectory)
-		return path, targets[1], err
-	}
-	return "", "", fmt.Errorf("usage: apix %s [config] endpoint", command)
-}
-
-func resolveCollectionTargets(targets []string, configDirectory string) (string, string, error) {
-	if len(targets) == 1 {
-		return defaultConfigFile(), targets[0], nil
-	}
-	if len(targets) == 2 {
-		path, err := resolveConfigPath(targets[0], configDirectory)
-		return path, targets[1], err
-	}
-	return "", "", fmt.Errorf("usage: apix collection [config] PATH")
 }
 
 func resolveConfigPath(specification, configDirectory string) (string, error) {
@@ -350,8 +341,6 @@ func defaultConfigHome() string {
 }
 
 func defaultConfigDir() string { return filepath.Join(defaultConfigHome(), "configs") }
-
-func defaultConfigFile() string { return filepath.Join(defaultConfigHome(), "config.yaml") }
 
 func defaultEnvFile() string { return filepath.Join(defaultConfigHome(), ".env") }
 
@@ -614,18 +603,21 @@ func writeConfigTemplate(path string) error {
 
 func printHelp() {
 	fmt.Print(`usage: apix [global options] COMMAND [arguments]
-       apix [global options] [config] endpoint [request options]
+       apix [global options] API COMMAND [arguments]
 
 CLI API explorer for YAML-defined API configs.
 
 Commands:
   init NAME|PATH               Create a starter YAML config
   configs                      List available config aliases
-  list [config]                List configured endpoints
-  describe [config] endpoint   Describe an endpoint without executing it
-  preview [config] endpoint    Preview a request without sending it
-  run [config] endpoint        Execute an endpoint
-  collection [config] PATH     Execute a YAML request collection
+
+API commands:
+  API list                     List configured endpoints
+  API describe endpoint        Describe an endpoint without executing it
+  API preview endpoint         Preview a request without sending it
+  API run endpoint             Execute an endpoint
+  API collection PATH          Execute a YAML request collection
+  API logs                     Browse request logs with arrow-key selection
 
 Request options:
   --body PATH             Path to a JSON body file
@@ -644,11 +636,11 @@ Global options:
 Examples:
   apix init github
   apix configs
-  apix list github
-  apix describe github get_repo
-  apix preview github get_repo
-  apix run github get_repo --params '{"owner":"octocat"}'
-  apix github get_repo --params '{"owner":"octocat"}'
+  apix github list
+  apix github describe get_repo
+  apix github preview get_repo
+  apix github run get_repo --params '{"owner":"octocat"}'
+  apix github logs
 `)
 }
 

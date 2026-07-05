@@ -64,9 +64,9 @@ Edit `~/.config/apix/.env`, then inspect and run the API:
 
 ```bash
 apix configs
-apix list github
-apix preview github health
-apix github health
+apix github list
+apix github preview health
+apix github run health
 ```
 
 ## Example Config
@@ -93,8 +93,8 @@ endpoints:
 Run it:
 
 ```bash
-apix describe github get_repo
-apix github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
+apix github describe get_repo
+apix github run get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 ```
 
 ## Common Commands
@@ -103,13 +103,14 @@ apix github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 | --- | --- |
 | `apix init NAME` | Create `~/.config/apix/configs/NAME.yaml` |
 | `apix configs` | Show available config aliases |
-| `apix list NAME` | List endpoints in a config |
-| `apix describe NAME ENDPOINT` | Show endpoint details without sending a request |
-| `apix preview NAME ENDPOINT` | Print the request that would be sent |
-| `apix NAME ENDPOINT` | Execute an endpoint |
-| `apix PATH.yaml ENDPOINT` | Use an explicit config path |
-| `apix --config-dir PATH NAME ENDPOINT` | Resolve aliases from another directory |
-| `apix NAME ENDPOINT --output out.json` | Save the response body to a custom file |
+| `apix NAME list` | List endpoints in a config |
+| `apix NAME describe ENDPOINT` | Show endpoint details without sending a request |
+| `apix NAME preview ENDPOINT` | Print the request that would be sent |
+| `apix NAME run ENDPOINT` | Execute an endpoint |
+| `apix PATH.yaml run ENDPOINT` | Use an explicit config path |
+| `apix NAME logs` | Browse request logs for an API with arrow-key selection |
+| `apix --config-dir PATH NAME run ENDPOINT` | Resolve aliases from another directory |
+| `apix NAME run ENDPOINT --output out.json` | Save the response body to a custom file |
 
 Run `apix --help` for all flags and examples.
 
