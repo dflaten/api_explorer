@@ -24,13 +24,36 @@ Define an API once, keep secrets in environment variables, preview the exact req
 
 `apix` currently supports named API configs, request previews, bearer and basic auth, endpoint and CLI parameter merging, YAML request collections, response saving, and access-token persistence back into the local `.env` file.
 
-## Quick Start
+## Install
 
-Install from source:
+Download the archive for your operating system and CPU from the
+[latest GitHub Release](https://github.com/dflaten/api_explorer/releases/latest).
+Release archives are named like:
+
+```text
+api-explorer_VERSION_linux_amd64.tar.gz
+api-explorer_VERSION_linux_arm64.tar.gz
+api-explorer_VERSION_darwin_amd64.tar.gz
+api-explorer_VERSION_darwin_arm64.tar.gz
+```
+
+Extract the archive and install the `apix` binary somewhere on your `PATH`:
 
 ```bash
-go install ./cmd/apix
+tar -xzf api-explorer_VERSION_linux_amd64.tar.gz
+sudo install apix /usr/local/bin/apix
+apix --version
 ```
+
+On macOS, use the `darwin` archive for your CPU and install the binary the same way:
+
+```bash
+tar -xzf api-explorer_VERSION_darwin_arm64.tar.gz
+install -m 755 apix /usr/local/bin/apix
+apix --version
+```
+
+## Quick Start
 
 Create a starter API config:
 
@@ -42,7 +65,7 @@ Add local secrets:
 
 ```bash
 mkdir -p ~/.config/apix
-cp .env.example ~/.config/apix/.env
+printf 'GITHUB_TOKEN=your_github_token_here\n' > ~/.config/apix/.env
 ```
 
 Edit `~/.config/apix/.env`, then inspect and run the API:
