@@ -122,6 +122,7 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 		Definition:       endpoint,
 		Method:           strings.ToUpper(endpoint.Method),
 		FullURL:          fullURL,
+		Path:             requestLogPath(redactURL(fullURL)),
 		Params:           parameters,
 		EffectiveHeaders: effectiveHeaders,
 		Timeout:          client.Config.Timeout,
@@ -233,7 +234,7 @@ func (client *APIClient) executeCollection(path string) ([]map[string]any, error
 			})
 			continue
 		}
-		response, requestErr := client.execute(definition)
+		response, requestErr := executeWithLog(client, definition)
 		if requestErr != nil {
 			results = append(results, map[string]any{
 				"endpoint": item.Endpoint,
