@@ -54,7 +54,7 @@ The Go program exposes a `--version` option backed by build metadata variables:
 
 ```go
 var (
-	version = "0.4.0"
+	version = "0.5.0"
 	commit  = "none"
 	date    = "unknown"
 )
@@ -63,7 +63,7 @@ var (
 GoReleaser will set them through linker flags. The CLI should print something similar to:
 
 ```text
-apix 0.4.0 (commit abc1234, built 2026-06-14T12:00:00Z)
+apix 0.5.0 (commit abc1234, built 2026-06-14T12:00:00Z)
 ```
 
 Native Go and CLI integration tests cover `--version`.
@@ -213,14 +213,14 @@ For stronger validation, run each Linux binary through a container or matching m
 
 1. Merge all intended changes into `main`.
 2. Confirm the `main` branch checks pass.
-3. Choose a semantic version such as `v0.4.0`.
+3. Choose a semantic version such as `v0.5.0`.
 4. Create and push an annotated tag:
 
 ```bash
 git switch main
 git pull --ff-only
-git tag -a v0.4.0 -m "API Explorer v0.4.0"
-git push origin v0.4.0
+git tag -a v0.5.0 -m "API Explorer v0.5.0"
+git push origin v0.5.0
 ```
 
 5. Open the repository's Actions page and monitor the `Release` workflow.
@@ -234,13 +234,13 @@ Do not move or reuse a published version tag. If a release is defective, fix the
 Linux users can verify an archive with:
 
 ```bash
-grep 'api-explorer_0.4.0_linux_amd64.tar.gz' checksums.txt | sha256sum --check
+grep 'api-explorer_0.5.0_linux_amd64.tar.gz' checksums.txt | sha256sum --check
 ```
 
 macOS users can use:
 
 ```bash
-grep 'api-explorer_0.4.0_darwin_arm64.tar.gz' checksums.txt | shasum -a 256 --check
+grep 'api-explorer_0.5.0_darwin_arm64.tar.gz' checksums.txt | shasum -a 256 --check
 ```
 
 ## End-User Installation
@@ -248,7 +248,7 @@ grep 'api-explorer_0.4.0_darwin_arm64.tar.gz' checksums.txt | shasum -a 256 --ch
 Linux example:
 
 ```bash
-tar -xzf api-explorer_0.4.0_linux_amd64.tar.gz
+tar -xzf api-explorer_0.5.0_linux_amd64.tar.gz
 sudo install apix /usr/local/bin/apix
 apix --help
 ```
@@ -256,7 +256,7 @@ apix --help
 macOS example:
 
 ```bash
-tar -xzf api-explorer_0.4.0_darwin_arm64.tar.gz
+tar -xzf api-explorer_0.5.0_darwin_arm64.tar.gz
 install -m 755 apix /usr/local/bin/apix
 apix --help
 ```
