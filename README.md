@@ -28,14 +28,6 @@ Define an API once, keep secrets in environment variables, preview the exact req
 
 Download the archive for your operating system and CPU from the
 [latest GitHub Release](https://github.com/dflaten/api_explorer/releases/latest).
-Release archives are named like:
-
-```text
-api-explorer_VERSION_linux_amd64.tar.gz
-api-explorer_VERSION_linux_arm64.tar.gz
-api-explorer_VERSION_darwin_amd64.tar.gz
-api-explorer_VERSION_darwin_arm64.tar.gz
-```
 
 Extract the archive and install the `apix` binary somewhere on your `PATH`:
 
