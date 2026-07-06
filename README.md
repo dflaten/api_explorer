@@ -64,14 +64,14 @@ Edit `~/.config/apix/.env`, then inspect and run the API:
 
 ```bash
 apix configs
-apix github list
-apix github preview health
-apix github run health
+apix list github
+apix preview github health
+apix run github health
 ```
 
 ## Example Config
 
-Configs live in `~/.config/apix/configs/` by default. A file named `github.yaml` can be called as `apix github ...`.
+Configs live in `~/.config/apix/configs/` by default. A file named `github.yaml` can be called by alias, such as `apix list github`.
 
 ```yaml
 base_url: https://api.github.com
@@ -93,8 +93,8 @@ endpoints:
 Run it:
 
 ```bash
-apix github describe get_repo
-apix github run get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
+apix describe github get_repo
+apix run github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 ```
 
 ## Common Commands
@@ -103,14 +103,14 @@ apix github run get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 | --- | --- |
 | `apix init NAME` | Create `~/.config/apix/configs/NAME.yaml` |
 | `apix configs` | Show available config aliases |
-| `apix NAME list` | List endpoints in a config |
-| `apix NAME describe ENDPOINT` | Show endpoint details without sending a request |
-| `apix NAME preview ENDPOINT` | Print the request that would be sent |
-| `apix NAME run ENDPOINT` | Execute an endpoint |
-| `apix PATH.yaml run ENDPOINT` | Use an explicit config path |
-| `apix NAME logs` | Browse request logs for an API with arrow-key selection |
-| `apix --config-dir PATH NAME run ENDPOINT` | Resolve aliases from another directory |
-| `apix NAME run ENDPOINT --output out.json` | Save the response body to a custom file |
+| `apix list API` | List endpoints in a config |
+| `apix describe API ENDPOINT` | Show endpoint details without sending a request |
+| `apix preview API ENDPOINT` | Print the request that would be sent |
+| `apix run API ENDPOINT` | Execute an endpoint |
+| `apix run PATH.yaml ENDPOINT` | Use an explicit config path |
+| `apix logs API` | Browse request logs for an API with arrow-key selection |
+| `apix --config-dir PATH run API ENDPOINT` | Resolve aliases from another directory |
+| `apix run API ENDPOINT --output out.json` | Save the response body to a custom file |
 
 Run `apix --help` for all flags and examples.
 

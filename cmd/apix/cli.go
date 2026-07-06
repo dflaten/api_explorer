@@ -10,22 +10,18 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
 )
 
 type options struct {
-	Command        string
-	Targets        []string
 	Body           string
 	Params         string
 	Headers        string
 	ConfigDir      string
 	RequestPreview bool
 	Output         string
-	OutputSet      bool
 	Verbose        bool
-	Help           bool
-	Version        bool
 }
 
 var sensitiveHeaders = map[string]bool{
@@ -39,177 +35,283 @@ var sensitiveHeaders = map[string]bool{
 
 var envTokenPattern = regexp.MustCompile(`^\$\{([A-Z0-9_]+)\}$`)
 
-func parseOptions(arguments []string) (options, error) {
-	result := options{Output: "response.json"}
-	valueOptions := map[string]*string{
-		"--body": &result.Body, "--params": &result.Params, "--headers": &result.Headers,
-		"--config-dir": &result.ConfigDir, "--output": &result.Output,
-	}
-	for index := 0; index < len(arguments); index++ {
-		argument := arguments[index]
-		if target, ok := valueOptions[argument]; ok {
-			index++
-			if index >= len(arguments) {
-				return result, fmt.Errorf("argument %s: expected one argument", argument)
-			}
-			*target = arguments[index]
-			if argument == "--output" {
-				result.OutputSet = true
-			}
-			continue
-		}
-		switch argument {
-		case "--help", "-h":
-			result.Help = true
-		case "--version":
-			result.Version = true
-		case "--verbose", "-v":
-			result.Verbose = true
-		default:
-			if strings.HasPrefix(argument, "-") {
-				return result, fmt.Errorf("unrecognized arguments: %s", argument)
-			}
-			if result.Command == "" && len(result.Targets) == 0 && isGlobalCommand(argument) {
-				result.Command = argument
-			} else {
-				result.Targets = append(result.Targets, argument)
-			}
-		}
-	}
-	return result, nil
-}
-
-func isGlobalCommand(argument string) bool {
-	switch argument {
-	case "init", "configs":
-		return true
-	default:
-		return false
-	}
-}
-
 func run(arguments []string) error {
-	options, err := parseOptions(arguments)
-	if err != nil {
-		return err
-	}
-	if options.Help {
-		printHelp()
-		return nil
-	}
-	if options.Version {
-		printVersion()
-		return nil
-	}
-	if err := setDefaultPaths(&options); err != nil {
-		return err
-	}
-	if err := loadEnvFile(defaultEnvFile()); err != nil {
-		return err
-	}
-	switch options.Command {
-	case "init":
-		if err := rejectRequestOptions(options, "init"); err != nil {
-			return err
-		}
-		if len(options.Targets) != 1 {
-			return fmt.Errorf("usage: apix init NAME|PATH")
-		}
-		path, err := resolveInitConfigPath(options.Targets[0], options.ConfigDir)
-		if err != nil {
-			return err
-		}
-		if err := writeConfigTemplate(path); err != nil {
-			return err
-		}
-		fmt.Printf("Created starter config at %s\n", path)
-		fmt.Println("Replace placeholders like ${API_TOKEN} with environment variables before calling the API.")
-		return nil
-	case "configs":
-		if err := rejectRequestOptions(options, "configs"); err != nil {
-			return err
-		}
-		if len(options.Targets) != 0 {
-			return fmt.Errorf("usage: apix configs")
-		}
-		return printConfigList(options.ConfigDir)
-	case "":
-		return executeAPIScopedCommand(options)
-	default:
-		return fmt.Errorf("unknown command: %s", options.Command)
-	}
+	command := newRootCommand()
+	command.SetArgs(arguments)
+	return command.Execute()
 }
 
-func executeAPIScopedCommand(options options) error {
-	if len(options.Targets) < 2 {
-		return fmt.Errorf("usage: apix API COMMAND [arguments]")
+func newRootCommand() *cobra.Command {
+	options := options{Output: "response.json"}
+	showVersion := false
+	root := &cobra.Command{
+		Use:           "apix",
+		Short:         "Explore and test HTTP APIs from reusable YAML configs",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Long: `apix explores and tests HTTP APIs from reusable YAML configs.
+
+Configs are YAML files addressed either by alias from ~/.config/apix/configs
+or by explicit .yaml/.yml path. Secrets can live in ~/.config/apix/.env and
+be referenced with ${ENV_VAR} placeholders.`,
+		Example: `  apix init github
+  apix configs
+  apix list github
+  apix describe github get_repo
+  apix preview github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
+  apix run github create_issue --body issue.json --headers '{"X-Trace":"cli"}'
+  apix collection github smoke.yaml
+  apix logs github`,
+		RunE: func(command *cobra.Command, args []string) error {
+			if showVersion {
+				printVersion()
+				return nil
+			}
+			return command.Help()
+		},
 	}
-	apiName, command := options.Targets[0], options.Targets[1]
-	configPath, err := resolveConfigPath(apiName, options.ConfigDir)
-	if err != nil {
-		return err
-	}
-	switch command {
-	case "list":
-		if err := rejectRequestOptions(options, "list"); err != nil {
-			return err
-		}
-		if len(options.Targets) != 2 {
-			return fmt.Errorf("usage: apix API list")
-		}
-		return withAPIClient(configPath, func(client *APIClient) error {
-			printEndpointList(client)
-			return nil
-		})
-	case "describe":
-		if err := rejectRequestOptions(options, "describe"); err != nil {
-			return err
-		}
-		if len(options.Targets) != 3 {
-			return fmt.Errorf("usage: apix API describe endpoint")
-		}
-		return withAPIClient(configPath, func(client *APIClient) error {
-			return printEndpointDetails(client, options.Targets[2])
-		})
-	case "preview":
-		if err := rejectResponseOptions(options, "preview"); err != nil {
-			return err
-		}
-		if len(options.Targets) != 3 {
-			return fmt.Errorf("usage: apix API preview endpoint")
-		}
-		options.RequestPreview = true
-		return executeResolvedEndpoint(options, configPath, options.Targets[2])
-	case "run":
-		if len(options.Targets) != 3 {
-			return fmt.Errorf("usage: apix API run endpoint")
-		}
-		return executeResolvedEndpoint(options, configPath, options.Targets[2])
-	case "collection":
-		if err := rejectRequestOptions(options, "collection"); err != nil {
-			return err
-		}
-		if len(options.Targets) != 3 {
-			return fmt.Errorf("usage: apix API collection PATH")
-		}
-		return withAPIClient(configPath, func(client *APIClient) error {
-			results, err := client.executeCollection(options.Targets[2])
+	root.PersistentFlags().StringVar(&options.ConfigDir, "config-dir", "", "config alias directory (default: ~/.config/apix/configs)")
+	root.Flags().BoolVar(&showVersion, "version", false, "show version and build information")
+
+	root.AddCommand(newInitCommand(&options))
+	root.AddCommand(newConfigsCommand(&options))
+	root.AddCommand(newListCommand(&options))
+	root.AddCommand(newDescribeCommand(&options))
+	root.AddCommand(newPreviewCommand(&options))
+	root.AddCommand(newRunCommand(&options))
+	root.AddCommand(newCollectionCommand(&options))
+	root.AddCommand(newLogsCommand(&options))
+	return root
+}
+
+func newInitCommand(options *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "init NAME|PATH",
+		Short: "Create a starter YAML API config",
+		Long: `Create a starter YAML API config.
+
+NAME creates ~/.config/apix/configs/NAME.yaml by default.
+PATH writes to an explicit .yaml/.yml path.
+
+The generated config demonstrates base_url, timeout, default_headers, bearer
+auth, endpoints, path params, and JSON bodies.`,
+		Example: `  apix init github
+  apix --config-dir ./configs init github
+  apix init ./github.yaml`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := preparePaths(options); err != nil {
+				return err
+			}
+			path, err := resolveInitConfigPath(args[0], options.ConfigDir)
 			if err != nil {
 				return err
 			}
-			return printJSON(results)
-		})
-	case "logs":
-		if err := rejectRequestOptions(options, "logs"); err != nil {
-			return err
-		}
-		if len(options.Targets) != 2 {
-			return fmt.Errorf("usage: apix API logs")
-		}
-		return printRequestLogs(configPath)
-	default:
-		return fmt.Errorf("unknown API command %q; usage: apix API COMMAND [arguments]", command)
+			if err := writeConfigTemplate(path); err != nil {
+				return err
+			}
+			fmt.Printf("Created starter config at %s\n", path)
+			fmt.Println("Replace placeholders like ${API_TOKEN} with environment variables before calling the API.")
+			return nil
+		},
 	}
+}
+
+func newConfigsCommand(options *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "configs",
+		Short: "List available config aliases",
+		Long: `List available API config aliases.
+
+Aliases are YAML files in the config directory. By default, github.yaml is
+used as "github" in commands such as "apix list github".`,
+		Example: `  apix configs
+  apix --config-dir ./configs configs`,
+		Args: cobra.NoArgs,
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := preparePaths(options); err != nil {
+				return err
+			}
+			return printConfigList(options.ConfigDir)
+		},
+	}
+}
+
+func newListCommand(options *options) *cobra.Command {
+	return &cobra.Command{
+		Use:     "list API",
+		Aliases: []string{"ls"},
+		Short:   "List configured endpoints",
+		Long:    "List endpoint names, HTTP methods, paths, and descriptions for one API config.",
+		Example: `  apix list github
+  apix list ./github.yaml`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := prepareRuntime(options); err != nil {
+				return err
+			}
+			configPath, err := resolveConfigPath(args[0], options.ConfigDir)
+			if err != nil {
+				return err
+			}
+			return withAPIClient(configPath, func(client *APIClient) error {
+				printEndpointList(client)
+				return nil
+			})
+		},
+	}
+}
+
+func newDescribeCommand(options *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "describe API ENDPOINT",
+		Short: "Describe an endpoint without executing it",
+		Long:  "Show one endpoint's resolved method, URL, headers, params, and body without sending a request.",
+		Example: `  apix describe github get_repo
+  apix describe ./github.yaml get_repo`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := prepareRuntime(options); err != nil {
+				return err
+			}
+			configPath, err := resolveConfigPath(args[0], options.ConfigDir)
+			if err != nil {
+				return err
+			}
+			return withAPIClient(configPath, func(client *APIClient) error {
+				return printEndpointDetails(client, args[1])
+			})
+		},
+	}
+}
+
+func newPreviewCommand(options *options) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "preview API ENDPOINT",
+		Short: "Preview a request without sending it",
+		Long:  "Print the exact request that would be sent, with sensitive headers redacted.",
+		Example: `  apix preview github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
+  apix preview github create_issue --body issue.json --headers '{"X-Trace":"cli"}'`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := prepareRuntime(options); err != nil {
+				return err
+			}
+			configPath, err := resolveConfigPath(args[0], options.ConfigDir)
+			if err != nil {
+				return err
+			}
+			options.RequestPreview = true
+			return executeResolvedEndpoint(*options, configPath, args[1])
+		},
+	}
+	addRequestFlags(command, options)
+	return command
+}
+
+func newRunCommand(options *options) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "run API ENDPOINT",
+		Short: "Execute an endpoint",
+		Long: `Execute one configured endpoint.
+
+The request preview is printed before sending the request. The response body is
+saved to response.json unless --output is provided.`,
+		Example: `  apix run github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
+  apix run github create_issue --body issue.json --output issue-response.json
+  apix run ./github.yaml get_repo -v`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := prepareRuntime(options); err != nil {
+				return err
+			}
+			configPath, err := resolveConfigPath(args[0], options.ConfigDir)
+			if err != nil {
+				return err
+			}
+			options.RequestPreview = false
+			return executeResolvedEndpoint(*options, configPath, args[1])
+		},
+	}
+	addRequestFlags(command, options)
+	command.Flags().StringVar(&options.Output, "output", "response.json", "response output path")
+	command.Flags().BoolVarP(&options.Verbose, "verbose", "v", false, "print response headers")
+	return command
+}
+
+func newCollectionCommand(options *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "collection API PATH",
+		Short: "Execute a YAML request collection",
+		Long: `Execute a YAML request collection against one API config.
+
+Collection file shape:
+  requests:
+    - endpoint: get_repo
+      params:
+        owner: octocat
+        repo: Hello-World
+      headers:
+        X-Trace: smoke
+      body_file: request.json`,
+		Example: `  apix collection github smoke.yaml
+  apix collection ./github.yaml ./collections/smoke.yaml`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := prepareRuntime(options); err != nil {
+				return err
+			}
+			configPath, err := resolveConfigPath(args[0], options.ConfigDir)
+			if err != nil {
+				return err
+			}
+			return withAPIClient(configPath, func(client *APIClient) error {
+				results, err := client.executeCollection(args[1])
+				if err != nil {
+					return err
+				}
+				return printJSON(results)
+			})
+		},
+	}
+}
+
+func newLogsCommand(options *options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "logs API",
+		Short: "Browse request logs",
+		Long:  "Browse request logs for one API config. Logs are stored under ~/.config/apix/logs.",
+		Example: `  apix logs github
+  apix logs ./github.yaml`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			if err := preparePaths(options); err != nil {
+				return err
+			}
+			configPath, err := resolveConfigPath(args[0], options.ConfigDir)
+			if err != nil {
+				return err
+			}
+			return printRequestLogs(configPath)
+		},
+	}
+}
+
+func addRequestFlags(command *cobra.Command, options *options) {
+	command.Flags().StringVar(&options.Body, "body", "", "path to a JSON body file")
+	command.Flags().StringVar(&options.Params, "params", "", "query/path parameter overrides as a JSON object")
+	command.Flags().StringVar(&options.Headers, "headers", "", "header overrides as a JSON object with string values")
+}
+
+func preparePaths(options *options) error {
+	return setDefaultPaths(options)
+}
+
+func prepareRuntime(options *options) error {
+	if err := preparePaths(options); err != nil {
+		return err
+	}
+	return loadEnvFile(defaultEnvFile())
 }
 
 func withAPIClient(configPath string, execute func(*APIClient) error) error {
@@ -279,20 +381,6 @@ func executeResolvedEndpoint(options options, configPath, endpointName string) e
 				fmt.Printf("\nUpdated access token in %s.\n", envPath)
 			}
 		}
-	}
-	return nil
-}
-
-func rejectRequestOptions(options options, command string) error {
-	if options.Body != "" || options.Params != "" || options.Headers != "" || options.OutputSet || options.Verbose {
-		return fmt.Errorf("request options are not valid for %s", command)
-	}
-	return nil
-}
-
-func rejectResponseOptions(options options, command string) error {
-	if options.OutputSet || options.Verbose {
-		return fmt.Errorf("response options are not valid for %s", command)
 	}
 	return nil
 }
@@ -601,51 +689,12 @@ func writeConfigTemplate(path string) error {
 	return os.WriteFile(path, []byte(defaultConfigTemplate), 0o644)
 }
 
-func printHelp() {
-	fmt.Print(`usage: apix [global options] COMMAND [arguments]
-       apix [global options] API COMMAND [arguments]
-
-CLI API explorer for YAML-defined API configs.
-
-Commands:
-  init NAME|PATH               Create a starter YAML config
-  configs                      List available config aliases
-
-API commands:
-  API list                     List configured endpoints
-  API describe endpoint        Describe an endpoint without executing it
-  API preview endpoint         Preview a request without sending it
-  API run endpoint             Execute an endpoint
-  API collection PATH          Execute a YAML request collection
-  API logs                     Browse request logs with arrow-key selection
-
-Request options:
-  --body PATH             Path to a JSON body file
-  --params JSON           Query parameter overrides
-  --headers JSON          Header overrides
-
-Response options:
-  --output PATH           Response output path (default: response.json)
-  --verbose, -v           Print response headers
-
-Global options:
-  --config-dir PATH       Config alias directory (default: ~/.config/apix/configs)
-  --version               Show version and build information
-  --help, -h              Show this help
-
-Examples:
-  apix init github
-  apix configs
-  apix github list
-  apix github describe get_repo
-  apix github preview get_repo
-  apix github run get_repo --params '{"owner":"octocat"}'
-  apix github logs
-`)
+func versionString() string {
+	return fmt.Sprintf("%s (commit %s, built %s)", version, commit, date)
 }
 
 func printVersion() {
-	fmt.Printf("apix %s (commit %s, built %s)\n", version, commit, date)
+	fmt.Printf("apix %s\n", versionString())
 }
 
 const defaultConfigTemplate = `base_url: https://api.example.com
