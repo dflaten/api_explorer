@@ -177,7 +177,7 @@ func TestCLIVersion(t *testing.T) {
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
-	if result.stdout != "apix 0.5.0 (commit none, built unknown)\n" {
+	if result.stdout != "apix 0.6.0 (commit none, built unknown)\n" {
 		t.Fatalf("unexpected version output: %q", result.stdout)
 	}
 }
