@@ -2,11 +2,40 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestListRequestLogsReturnsNewestFirst(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	directory := filepath.Join(home, ".config", "apix", "logs", "api")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeLogEntry(t, filepath.Join(directory, "old.json"), requestLogEntry{
+		Endpoint:  "old",
+		Method:    "GET",
+		StartedAt: "2026-07-05T10:00:00-05:00",
+	})
+	writeLogEntry(t, filepath.Join(directory, "new.json"), requestLogEntry{
+		Endpoint:  "new",
+		Method:    "GET",
+		StartedAt: "2026-07-05T11:00:00-05:00",
+	})
+
+	logs, err := listRequestLogs(filepath.Join(home, ".config", "apix", "configs", "api.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 2 || logs[0].Endpoint != "new" || logs[1].Endpoint != "old" {
+		t.Fatalf("expected newest log first, got %#v", logs)
+	}
+}
 
 func TestRequestLogEntryYAMLUsesHumanReadableShape(t *testing.T) {
 	entry := requestLogEntry{
@@ -84,6 +113,17 @@ func TestRenderRequestLogViewerUsesBoxDrawingCharacters(t *testing.T) {
 }
 
 func intPointer(value int) *int { return &value }
+
+func writeLogEntry(t *testing.T, path string, entry requestLogEntry) {
+	t.Helper()
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()

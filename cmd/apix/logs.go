@@ -89,6 +89,7 @@ type requestLogSummary struct {
 	Method     string
 	StatusCode *int
 	StartedAt  string
+	sortTime   time.Time
 	DurationMS int64
 }
 
@@ -295,10 +296,16 @@ func listRequestLogs(configPath string) ([]requestLogSummary, error) {
 			continue
 		}
 		summary.Path = path
+		if summary.sortTime.IsZero() {
+			info, statErr := entry.Info()
+			if statErr == nil {
+				summary.sortTime = info.ModTime()
+			}
+		}
 		logs = append(logs, summary)
 	}
 	sort.Slice(logs, func(left, right int) bool {
-		return logs[left].StartedAt > logs[right].StartedAt
+		return logs[left].sortTime.After(logs[right].sortTime)
 	})
 	return logs, nil
 }
@@ -313,8 +320,17 @@ func readRequestLogSummary(path string) (requestLogSummary, error) {
 		Method:     entry.Method,
 		StatusCode: entry.StatusCode,
 		StartedAt:  entry.StartedAt,
+		sortTime:   requestLogSortTime(entry.StartedAt),
 		DurationMS: entry.DurationMS,
 	}, nil
+}
+
+func requestLogSortTime(value string) time.Time {
+	timestamp, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return timestamp
 }
 
 func readRequestLogEntry(path string) (requestLogEntry, error) {
