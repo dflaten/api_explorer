@@ -62,6 +62,8 @@ type requestLogEntry struct {
 	URL          string              `json:"url"`
 	Path         string              `json:"path"`
 	Params       map[string]any      `json:"params,omitempty"`
+	PathParams   map[string]any      `json:"path_params,omitempty"`
+	QueryParams  map[string]any      `json:"query_params,omitempty"`
 	Headers      map[string]string   `json:"headers,omitempty"`
 	Body         any                 `json:"body,omitempty"`
 	StatusCode   *int                `json:"status_code,omitempty"`
@@ -109,11 +111,12 @@ type requestLogDisplay struct {
 }
 
 type requestLogRequest struct {
-	URL     string            `yaml:"url"`
-	Path    string            `yaml:"path"`
-	Params  map[string]any    `yaml:"params,omitempty"`
-	Headers map[string]string `yaml:"headers,omitempty"`
-	Body    any               `yaml:"body,omitempty"`
+	URL         string            `yaml:"url"`
+	Path        string            `yaml:"path"`
+	PathParams  map[string]any    `yaml:"path_params,omitempty"`
+	QueryParams map[string]any    `yaml:"query_params,omitempty"`
+	Headers     map[string]string `yaml:"headers,omitempty"`
+	Body        any               `yaml:"body,omitempty"`
 }
 
 type requestLogTiming struct {
@@ -155,7 +158,8 @@ func logRequest(configPath string, definition *RequestDefinition, response *http
 		Method:       definition.Method,
 		URL:          redactURL(definition.FullURL),
 		Path:         definition.Path,
-		Params:       redactMap(definition.Params.Map()),
+		PathParams:   redactMap(definition.PathParams.Map()),
+		QueryParams:  redactMap(definition.QueryParams.Map()),
 		Headers:      redactHeaders(definition.EffectiveHeaders),
 		Body:         redactValue(definition.Body),
 		StatusCode:   statusCode,
@@ -362,6 +366,10 @@ func printRequestLogs(configPath string) error {
 }
 
 func requestLogEntryYAML(entry requestLogEntry) (string, error) {
+	queryParams := entry.QueryParams
+	if len(queryParams) == 0 {
+		queryParams = entry.Params
+	}
 	output, err := yaml.Marshal(requestLogDisplay{
 		Name:       entry.Name,
 		API:        entry.API,
@@ -372,11 +380,12 @@ func requestLogEntryYAML(entry requestLogEntry) (string, error) {
 		Error:      entry.Error,
 		DurationMS: entry.DurationMS,
 		Request: requestLogRequest{
-			URL:     entry.URL,
-			Path:    entry.Path,
-			Params:  entry.Params,
-			Headers: entry.Headers,
-			Body:    entry.Body,
+			URL:         entry.URL,
+			Path:        entry.Path,
+			PathParams:  entry.PathParams,
+			QueryParams: queryParams,
+			Headers:     entry.Headers,
+			Body:        entry.Body,
 		},
 		Timing: requestLogTiming{
 			StartedAt:   entry.StartedAt,
@@ -392,7 +401,25 @@ func requestLogEntryYAML(entry requestLogEntry) (string, error) {
 }
 
 func shouldColorTerminalOutput() bool {
-	return stdoutIsTerminal() && os.Getenv("NO_COLOR") == ""
+	switch terminalColorMode {
+	case "always":
+		return true
+	case "never":
+		return false
+	}
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	if os.Getenv("CLICOLOR") == "0" {
+		return false
+	}
+	if force := os.Getenv("CLICOLOR_FORCE"); force != "" && force != "0" {
+		return true
+	}
+	if os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	return stdoutIsTerminal()
 }
 
 func colorizeYAML(input string) string {

@@ -54,12 +54,14 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 	}
 
 	requestURL := ""
+	pathParameters := OrderedValues{}
 	if endpoint.URL != nil {
 		requestURL = *endpoint.URL
 	} else {
 		path := *endpoint.Path
 		for _, match := range pathParameterPattern.FindAllStringSubmatch(path, -1) {
 			if value, found := parameters.Delete(match[1]); found {
+				pathParameters.Set(match[1], value)
 				path = strings.ReplaceAll(path, match[0], url.PathEscape(scalarString(value)))
 			}
 		}
@@ -123,7 +125,8 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 		Method:           strings.ToUpper(endpoint.Method),
 		FullURL:          fullURL,
 		Path:             requestLogPath(redactURL(fullURL)),
-		Params:           parameters,
+		PathParams:       pathParameters,
+		QueryParams:      parameters,
 		EffectiveHeaders: effectiveHeaders,
 		Timeout:          client.Config.Timeout,
 		Body:             body,

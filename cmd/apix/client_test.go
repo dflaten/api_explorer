@@ -48,6 +48,12 @@ func TestBuildRequestMergesOverrides(t *testing.T) {
 	if definition.FullURL != "https://api.example.com/users/456?expand=teams&page=2" {
 		t.Fatalf("unexpected URL %q", definition.FullURL)
 	}
+	if got := definition.PathParams.Map()["id"]; got != "456" {
+		t.Fatalf("unexpected path params: %#v", definition.PathParams.Map())
+	}
+	if got := definition.QueryParams.Map()["expand"]; got != "teams" {
+		t.Fatalf("unexpected query params: %#v", definition.QueryParams.Map())
+	}
 	if definition.EffectiveHeaders["Authorization"] != "Bearer secret" {
 		t.Fatal("bearer auth was not applied")
 	}

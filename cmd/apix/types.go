@@ -181,7 +181,8 @@ type RequestDefinition struct {
 	Method           string
 	FullURL          string
 	Path             string
-	Params           OrderedValues
+	PathParams       OrderedValues
+	QueryParams      OrderedValues
 	EffectiveHeaders map[string]string
 	Timeout          float64
 	Body             any
