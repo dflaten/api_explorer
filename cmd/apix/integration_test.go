@@ -126,7 +126,7 @@ func TestCLIRequestPreviewRedactsSecrets(t *testing.T) {
 	if result.exitCode != 0 {
 		t.Fatal(result.stderr)
 	}
-	for _, expected := range []string{"Method: POST", "http://example.invalid/items/99?source=config&page=2", `"Authorization": "<redacted>"`} {
+	for _, expected := range []string{"REQUEST", "POST http://example.invalid/items/99?source=config&page=2", "Path Params:", `"id": "99"`, "Query Params:", `"source": "config"`, `"page": 2`, `"Authorization": "<redacted>"`} {
 		if !strings.Contains(result.stdout, expected) {
 			t.Fatalf("stdout missing %q:\n%s", expected, result.stdout)
 		}
@@ -356,11 +356,11 @@ func TestCLIResponseFilesAndTokenPersistence(t *testing.T) {
 	for _, test := range []struct {
 		endpoint string
 		contains string
-		expected map[string]any
+		expected any
 	}{
-		{"text", "plain response", map[string]any{"raw": "plain response"}},
-		{"empty", "Response Body:\nnull", map[string]any{"raw": nil}},
-		{"missing", "Status Code: 404", map[string]any{"error": "not found"}},
+		{"text", "plain response", "plain response"},
+		{"empty", "Body:\n    null", nil},
+		{"missing", "Status: 404", map[string]any{"error": "not found"}},
 	} {
 		t.Run(test.endpoint, func(t *testing.T) {
 			directory := t.TempDir()
@@ -377,8 +377,15 @@ func TestCLIResponseFilesAndTokenPersistence(t *testing.T) {
 			if err := json.Unmarshal(data, &actual); err != nil {
 				t.Fatal(err)
 			}
-			if fmt.Sprint(actual) != fmt.Sprint(test.expected) {
-				t.Fatalf("expected %#v, got %#v", test.expected, actual)
+			response, ok := actual["response"].(map[string]any)
+			if !ok {
+				t.Fatalf("saved output missing response object: %#v", actual)
+			}
+			if fmt.Sprint(response["body"]) != fmt.Sprint(test.expected) {
+				t.Fatalf("expected response body %#v, got %#v", test.expected, response["body"])
+			}
+			if _, ok := actual["request"].(map[string]any); !ok {
+				t.Fatalf("saved output missing request object: %#v", actual)
 			}
 		})
 	}

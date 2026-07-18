@@ -19,6 +19,7 @@ type options struct {
 	Params         string
 	Headers        string
 	ConfigDir      string
+	Color          string
 	RequestPreview bool
 	Output         string
 	Verbose        bool
@@ -34,6 +35,8 @@ var sensitiveHeaders = map[string]bool{
 }
 
 var envTokenPattern = regexp.MustCompile(`^\$\{([A-Z0-9_]+)\}$`)
+
+var terminalColorMode = "auto"
 
 func run(arguments []string) error {
 	command := newRootCommand()
@@ -71,6 +74,7 @@ be referenced with ${ENV_VAR} placeholders.`,
 		},
 	}
 	root.PersistentFlags().StringVar(&options.ConfigDir, "config-dir", "", "config alias directory (default: ~/.config/apix/configs)")
+	root.PersistentFlags().StringVar(&options.Color, "color", "auto", "color terminal output: auto, always, never")
 	root.Flags().BoolVar(&showVersion, "version", false, "show version and build information")
 
 	root.AddCommand(newInitCommand(&options))
@@ -215,8 +219,8 @@ func newRunCommand(options *options) *cobra.Command {
 		Short: "Execute an endpoint",
 		Long: `Execute one configured endpoint.
 
-The request preview is printed before sending the request. The response body is
-saved to response.json unless --output is provided.`,
+The request preview is printed before sending the request. The request/response
+exchange is saved to response.json unless --output is provided.`,
 		Example: `  apix run github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
   apix run github create_issue --body issue.json --output issue-response.json
   apix run ./github.yaml get_repo -v`,
@@ -234,7 +238,7 @@ saved to response.json unless --output is provided.`,
 		},
 	}
 	addRequestFlags(command, options)
-	command.Flags().StringVar(&options.Output, "output", "response.json", "response output path")
+	command.Flags().StringVar(&options.Output, "output", "response.json", "request/response output path")
 	command.Flags().BoolVarP(&options.Verbose, "verbose", "v", false, "print response headers")
 	return command
 }
@@ -304,7 +308,20 @@ func addRequestFlags(command *cobra.Command, options *options) {
 }
 
 func preparePaths(options *options) error {
+	if err := setTerminalColorMode(options.Color); err != nil {
+		return err
+	}
 	return setDefaultPaths(options)
+}
+
+func setTerminalColorMode(mode string) error {
+	switch mode {
+	case "auto", "always", "never":
+		terminalColorMode = mode
+		return nil
+	default:
+		return fmt.Errorf("invalid --color value %q; expected auto, always, or never", mode)
+	}
 }
 
 func prepareRuntime(options *options) error {
@@ -365,12 +382,14 @@ func executeResolvedEndpoint(options options, configPath, endpointName string) e
 	if err != nil {
 		return err
 	}
-	printResponse(response.StatusCode, response.StatusCode >= 200 && response.StatusCode < 400, responseHeaders(response.Header), options.Verbose)
+	responseHeaderMap := responseHeaders(response.Header)
+	success := response.StatusCode >= 200 && response.StatusCode < 400
+	printResponse(response.Status, success, responseHeaderMap, options.Verbose)
 	responseJSON, responseText := emitResponseBody(parsedBody)
-	if err := saveResponse(options.Output, responseJSON, responseText); err != nil {
+	if err := saveResponse(options.Output, definition, response.Status, response.StatusCode, success, responseHeaderMap, responseJSON, responseText); err != nil {
 		fmt.Printf("\nWarning: failed to write %s: %s\n", options.Output, err)
 	} else {
-		fmt.Printf("\nSaved response body to %s\n", options.Output)
+		fmt.Printf("\nSaved request and response to %s\n", options.Output)
 	}
 	if object, ok := responseJSON.(map[string]any); ok {
 		if token, ok := object["access_token"].(string); ok {
@@ -531,9 +550,13 @@ func printEndpointDetails(client *APIClient, name string) error {
 		fmt.Println("\nEndpoint Headers:")
 		printJSON(definition.Definition.Headers)
 	}
-	if definition.Params.Len() > 0 {
+	if definition.PathParams.Len() > 0 {
+		fmt.Println("\nDefault Path Parameters:")
+		printJSON(definition.PathParams.Map())
+	}
+	if definition.QueryParams.Len() > 0 {
 		fmt.Println("\nDefault Query Parameters:")
-		printJSON(definition.Params.Map())
+		printJSON(definition.QueryParams.Map())
 	}
 	if definition.Body != nil {
 		fmt.Println("\nDefault Body:")
@@ -543,22 +566,26 @@ func printEndpointDetails(client *APIClient, name string) error {
 }
 
 func printRequestPreview(definition *RequestDefinition) {
-	fmt.Printf("Request Preview:\n  Method: %s\n  URL: %s\n  Timeout: %gs\n", definition.Method, definition.FullURL, definition.Timeout)
-	if len(definition.EffectiveHeaders) > 0 {
-		fmt.Println("  Headers:")
-		printJSON(redactHeaders(definition.EffectiveHeaders))
+	fmt.Printf("REQUEST\n  %s %s\n  Timeout: %gs\n", definition.Method, definition.FullURL, definition.Timeout)
+	if definition.PathParams.Len() > 0 {
+		fmt.Println("\n  Path Params:")
+		printIndentedJSON(definition.PathParams.Map(), "    ")
 	}
-	if definition.Params.Len() > 0 {
-		fmt.Println("  Query Params:")
-		printJSON(definition.Params.Map())
+	if definition.QueryParams.Len() > 0 {
+		fmt.Println("\n  Query Params:")
+		printIndentedJSON(definition.QueryParams.Map(), "    ")
+	}
+	if len(definition.EffectiveHeaders) > 0 {
+		fmt.Println("\n  Headers:")
+		printIndentedJSON(redactHeaders(definition.EffectiveHeaders), "    ")
 	}
 	if definition.Body != nil {
 		if definition.BodyType == "form" {
-			fmt.Println("  Form Body:")
+			fmt.Println("\n  Form Body:")
 		} else {
-			fmt.Println("  JSON Body:")
+			fmt.Println("\n  JSON Body:")
 		}
-		printJSON(definition.Body)
+		printIndentedJSON(definition.Body, "    ")
 	}
 }
 
@@ -572,51 +599,183 @@ func redactHeaders(headers map[string]string) map[string]string {
 	return result
 }
 
-func printResponse(statusCode int, success bool, headers map[string]string, verbose bool) {
-	fmt.Printf("Status Code: %d\nSuccess: %t\n", statusCode, success)
+func printResponse(status string, success bool, headers map[string]string, verbose bool) {
+	fmt.Printf("\nRESPONSE\n  Status: %s\n  Success: %t\n", status, success)
 	if verbose {
-		fmt.Println("\nResponse Headers:")
-		printJSON(headers)
+		fmt.Println("\n  Headers:")
+		printIndentedJSON(redactHeaders(headers), "    ")
 	}
 }
 
 func emitResponseBody(body any) (any, *string) {
-	fmt.Println("\nResponse Body:")
+	fmt.Println("\n  Body:")
 	if body == nil {
-		fmt.Println("null")
+		fmt.Println("    null")
 		return nil, nil
 	}
 	switch body.(type) {
 	case map[string]any, []any:
-		printJSON(body)
+		printIndentedJSON(body, "    ")
 		return body, nil
 	default:
 		text := fmt.Sprint(body)
-		fmt.Println(text)
+		fmt.Println(indentText(text, "    "))
 		return nil, &text
 	}
 }
 
 func printJSON(value any) error {
+	text, err := formatJSON(value)
+	if err != nil {
+		return err
+	}
+	if shouldColorTerminalOutput() {
+		text = colorizeJSON(text)
+	}
+	fmt.Print(text)
+	return nil
+}
+
+func printIndentedJSON(value any, indent string) error {
+	text, err := formatJSON(value)
+	if err != nil {
+		return err
+	}
+	text = indentText(text, indent)
+	if shouldColorTerminalOutput() {
+		text = colorizeJSON(text)
+	}
+	fmt.Print(text)
+	return nil
+}
+
+func formatJSON(value any) (string, error) {
 	var output bytes.Buffer
 	encoder := json.NewEncoder(&output)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(value); err != nil {
-		return err
+		return "", err
 	}
-	fmt.Print(output.String())
-	return nil
+	return output.String(), nil
 }
 
-func saveResponse(path string, responseJSON any, responseText *string) error {
-	value := responseJSON
-	if responseJSON == nil {
-		var raw any
-		if responseText != nil {
-			raw = *responseText
+func indentText(text, indent string) string {
+	if text == "" {
+		return text
+	}
+	lines := strings.SplitAfter(text, "\n")
+	var output strings.Builder
+	for _, line := range lines {
+		if line == "" {
+			continue
 		}
-		value = map[string]any{"raw": raw}
+		output.WriteString(indent)
+		output.WriteString(line)
+	}
+	return output.String()
+}
+
+func colorizeJSON(input string) string {
+	var output strings.Builder
+	for index := 0; index < len(input); {
+		character := input[index]
+		switch {
+		case character == '"':
+			end := jsonStringEnd(input, index)
+			token := input[index:end]
+			if jsonStringIsObjectKey(input, end) {
+				output.WriteString(ansiCyan)
+			} else {
+				output.WriteString(ansiGreen)
+			}
+			output.WriteString(token)
+			output.WriteString(ansiReset)
+			index = end
+		case strings.HasPrefix(input[index:], "true"):
+			output.WriteString(ansiMagenta + "true" + ansiReset)
+			index += len("true")
+		case strings.HasPrefix(input[index:], "false"):
+			output.WriteString(ansiMagenta + "false" + ansiReset)
+			index += len("false")
+		case strings.HasPrefix(input[index:], "null"):
+			output.WriteString(ansiDim + "null" + ansiReset)
+			index += len("null")
+		case character == '-' || ('0' <= character && character <= '9'):
+			end := jsonNumberEnd(input, index)
+			output.WriteString(ansiYellow)
+			output.WriteString(input[index:end])
+			output.WriteString(ansiReset)
+			index = end
+		default:
+			output.WriteByte(character)
+			index++
+		}
+	}
+	return output.String()
+}
+
+func jsonStringEnd(input string, start int) int {
+	for index := start + 1; index < len(input); index++ {
+		switch input[index] {
+		case '\\':
+			index++
+		case '"':
+			return index + 1
+		}
+	}
+	return len(input)
+}
+
+func jsonStringIsObjectKey(input string, end int) bool {
+	for index := end; index < len(input); index++ {
+		switch input[index] {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case ':':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+func jsonNumberEnd(input string, start int) int {
+	index := start
+	for index < len(input) {
+		character := input[index]
+		if character == '-' || character == '+' || character == '.' || character == 'e' || character == 'E' || ('0' <= character && character <= '9') {
+			index++
+			continue
+		}
+		break
+	}
+	return index
+}
+
+func saveResponse(path string, definition *RequestDefinition, status string, statusCode int, success bool, headers map[string]string, responseJSON any, responseText *string) error {
+	body := responseJSON
+	if responseJSON == nil && responseText != nil {
+		body = *responseText
+	}
+	value := map[string]any{
+		"request": map[string]any{
+			"method":          definition.Method,
+			"url":             definition.FullURL,
+			"timeout_seconds": definition.Timeout,
+			"path_params":     definition.PathParams.Map(),
+			"query_params":    definition.QueryParams.Map(),
+			"headers":         redactHeaders(definition.EffectiveHeaders),
+			"body":            definition.Body,
+		},
+		"response": map[string]any{
+			"status_code": statusCode,
+			"status":      status,
+			"success":     success,
+			"headers":     redactHeaders(headers),
+			"body":        body,
+		},
 	}
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {

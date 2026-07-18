@@ -45,7 +45,7 @@ func TestRequestLogEntryYAMLUsesHumanReadableShape(t *testing.T) {
 		Method:      "GET",
 		URL:         "https://api.example.com/health",
 		Path:        "/health",
-		Params:      map[string]any{"token": redactedValue},
+		QueryParams: map[string]any{"token": redactedValue},
 		Headers:     map[string]string{"Authorization": redactedValue},
 		StatusCode:  intPointer(200),
 		Success:     true,
@@ -65,6 +65,25 @@ func TestRequestLogEntryYAMLUsesHumanReadableShape(t *testing.T) {
 	}
 	if strings.Contains(output, "{") || strings.Contains(output, `"name"`) {
 		t.Fatalf("expected YAML-shaped output, got:\n%s", output)
+	}
+}
+
+func TestRequestLogEntryYAMLShowsLegacyParams(t *testing.T) {
+	output, err := requestLogEntryYAML(requestLogEntry{
+		Name:     "legacy",
+		API:      "example",
+		Endpoint: "health",
+		Method:   "GET",
+		URL:      "https://api.example.com/health?page=1",
+		Path:     "/health?page=1",
+		Params:   map[string]any{"page": float64(1)},
+		Success:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "query_params:") || !strings.Contains(output, "page: 1") {
+		t.Fatalf("legacy params were not shown as query params:\n%s", output)
 	}
 }
 

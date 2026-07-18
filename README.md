@@ -110,7 +110,7 @@ apix run github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 | `apix run PATH.yaml ENDPOINT` | Use an explicit config path |
 | `apix logs API` | Browse request logs for an API with arrow-key selection |
 | `apix --config-dir PATH run API ENDPOINT` | Resolve aliases from another directory |
-| `apix run API ENDPOINT --output out.json` | Save the response body to a custom file |
+| `apix run API ENDPOINT --output out.json` | Save the request/response exchange to a custom file |
 
 Run `apix --help` for all flags and examples.
 
