@@ -351,6 +351,51 @@ func TestCLIBasicAuthAndCollections(t *testing.T) {
 	}
 }
 
+func TestCLIEndpointAuthOverridesConfigAuth(t *testing.T) {
+	server, received := compatibilityServer(t)
+	directory := t.TempDir()
+	configPath := filepath.Join(directory, "api.yaml")
+	config := fmt.Sprintf(`base_url: %s
+auth:
+  type: bearer
+  token: api-token
+endpoints:
+  token:
+    method: POST
+    path: /token
+    auth:
+      type: basic
+      username: client-id
+      password: client-secret
+    body_type: form
+    body:
+      grant_type: client_credentials
+  health:
+    method: GET
+    path: /health
+`, server.URL)
+	if err := os.WriteFile(configPath, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result := runCLI(t, directory, nil, "run", configPath, "token")
+	if result.exitCode != 0 {
+		t.Fatal(result.stderr)
+	}
+	expectedBasic := "Basic " + base64.StdEncoding.EncodeToString([]byte("client-id:client-secret"))
+	if request := <-received; request.Headers.Get("Authorization") != expectedBasic {
+		t.Fatalf("token endpoint sent authorization %q, want %q", request.Headers.Get("Authorization"), expectedBasic)
+	}
+
+	result = runCLI(t, directory, nil, "run", configPath, "health")
+	if result.exitCode != 0 {
+		t.Fatal(result.stderr)
+	}
+	if request := <-received; request.Headers.Get("Authorization") != "Bearer api-token" {
+		t.Fatalf("normal endpoint sent authorization %q, want bearer token", request.Headers.Get("Authorization"))
+	}
+}
+
 func TestCLIResponseFilesAndTokenPersistence(t *testing.T) {
 	server, _ := compatibilityServer(t)
 	for _, test := range []struct {

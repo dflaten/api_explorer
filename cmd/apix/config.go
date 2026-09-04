@@ -98,25 +98,8 @@ func validateConfigNode(root *yaml.Node) error {
 		}
 	}
 	if auth := mappingValue(document, "auth"); auth != nil {
-		if auth.Kind != yaml.MappingNode {
-			return invalid("API config", "auth", "must be an object")
-		}
-		authType := mappingValue(auth, "type")
-		if authType == nil || (authType.Value != "bearer" && authType.Value != "basic") {
-			return invalid("API config", "auth.type", "must be 'bearer' or 'basic'")
-		}
-		required := []string{"token"}
-		if authType.Value == "basic" {
-			required = []string{"username", "password"}
-		}
-		for _, field := range required {
-			value := mappingValue(auth, field)
-			if value == nil {
-				return invalid("API config", "auth", fmt.Sprintf("'%s' is a required property", field))
-			}
-			if value.Tag != "!!str" {
-				return invalid("API config", "auth."+field, "must be a string")
-			}
+		if err := validateAuthNode(auth, "API config", "auth"); err != nil {
+			return err
 		}
 	}
 
@@ -152,6 +135,11 @@ func validateConfigNode(root *yaml.Node) error {
 		if description := mappingValue(endpoint, "description"); description != nil && description.Tag != "!!str" {
 			return invalid("API config", location+".description", "must be a string")
 		}
+		if auth := mappingValue(endpoint, "auth"); auth != nil {
+			if err := validateAuthNode(auth, "API config", location+".auth"); err != nil {
+				return err
+			}
+		}
 		if headers := mappingValue(endpoint, "headers"); headers != nil {
 			if err := validateHeadersNode(headers, "API config", location+".headers"); err != nil {
 				return err
@@ -164,6 +152,30 @@ func validateConfigNode(root *yaml.Node) error {
 		}
 		if bodyType := mappingValue(endpoint, "body_type"); bodyType != nil && bodyType.Value != "json" && bodyType.Value != "form" {
 			return invalid("API config", location+".body_type", "must be 'json' or 'form'")
+		}
+	}
+	return nil
+}
+
+func validateAuthNode(node *yaml.Node, label, location string) error {
+	if node.Kind != yaml.MappingNode {
+		return invalid(label, location, "must be an object")
+	}
+	authType := mappingValue(node, "type")
+	if authType == nil || authType.Tag != "!!str" || (authType.Value != "bearer" && authType.Value != "basic") {
+		return invalid(label, location+".type", "must be 'bearer' or 'basic'")
+	}
+	required := []string{"token"}
+	if authType.Value == "basic" {
+		required = []string{"username", "password"}
+	}
+	for _, field := range required {
+		value := mappingValue(node, field)
+		if value == nil {
+			return invalid(label, location, fmt.Sprintf("'%s' is a required property", field))
+		}
+		if value.Tag != "!!str" {
+			return invalid(label, location+"."+field, "must be a string")
 		}
 	}
 	return nil

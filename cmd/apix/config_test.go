@@ -29,6 +29,7 @@ func TestValidateConfigRejectsInvalidContracts(t *testing.T) {
 		{"invalid timeout", "timeout: 0\nendpoints: {}\n", "number greater than zero"},
 		{"missing bearer token", "auth:\n  type: bearer\nendpoints: {}\n", "'token' is a required property"},
 		{"unsupported auth", "auth:\n  type: digest\nendpoints: {}\n", "must be 'bearer' or 'basic'"},
+		{"missing endpoint basic password", "endpoints:\n  token:\n    method: POST\n    path: /token\n    auth:\n      type: basic\n      username: client-id\n", "'password' is a required property"},
 		{"missing method", "endpoints:\n  broken:\n    path: /x\n", "'method' is a required property"},
 		{"both targets", "endpoints:\n  broken:\n    method: GET\n    path: /x\n    url: https://example.com/x\n", "exactly one of 'path' or 'url'"},
 		{"invalid headers", "endpoints:\n  broken:\n    method: GET\n    path: /x\n    headers:\n      X-Count: 2\n", "header names and values must be strings"},

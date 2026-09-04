@@ -155,6 +155,7 @@ type Endpoint struct {
 	URL         *string           `yaml:"url"`
 	BaseURL     string            `yaml:"base_url"`
 	Description string            `yaml:"description"`
+	Auth        *Auth             `yaml:"auth"`
 	Headers     map[string]string `yaml:"headers"`
 	Params      OrderedValues     `yaml:"params"`
 	Body        any               `yaml:"body"`
