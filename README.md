@@ -22,7 +22,7 @@ Define an API once, keep secrets in environment variables, preview the exact req
 | Request workflow | List, describe, preview, execute, save response |
 | Validation | Go tests, compatibility tests, and JSON schemas |
 
-`apix` currently supports named API configs, request previews, bearer and basic auth, endpoint and CLI parameter merging, YAML request collections, response saving, and access-token persistence back into the local `.env` file.
+`apix` currently supports named API configs, request previews, bearer and basic auth (including per-endpoint overrides), endpoint and CLI parameter merging, YAML request collections, response saving, and access-token persistence back into the local `.env` file.
 
 ## Install
 
@@ -96,6 +96,35 @@ Run it:
 apix describe github get_repo
 apix run github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
 ```
+
+## Token Endpoints with Client Credentials
+
+An endpoint-level `auth` block overrides the API-wide authentication for that
+request. This is useful when normal API calls use a bearer token, while the
+token endpoint uses HTTP Basic client credentials:
+
+```yaml
+auth:
+  type: bearer
+  token: ${API_TOKEN}
+endpoints:
+  token:
+    method: POST
+    path: /oauth/token
+    auth:
+      type: basic
+      username: ${CLIENT_ID}
+      password: ${CLIENT_SECRET}
+    body_type: form
+    body:
+      grant_type: client_credentials
+  get_profile:
+    method: GET
+    path: /me
+```
+
+The `token` request sends Basic auth; `get_profile` continues to send the
+default bearer token.
 
 ## Common Commands
 

@@ -98,7 +98,11 @@ func (client *APIClient) buildRequest(name, bodyPath string, parameterOverrides 
 		requestHeaders[key] = value
 	}
 	effectiveHeaders := cloneHeaders(client.Config.DefaultHeaders)
-	applyAuth(effectiveHeaders, client.Config.Auth)
+	auth := client.Config.Auth
+	if endpoint.Auth != nil {
+		auth = endpoint.Auth
+	}
+	applyAuth(effectiveHeaders, auth)
 	for key, value := range requestHeaders {
 		effectiveHeaders[key] = value
 	}

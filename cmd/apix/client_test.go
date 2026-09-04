@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"testing"
@@ -55,6 +56,30 @@ func TestBuildRequestMergesOverrides(t *testing.T) {
 		t.Fatal("header override was not applied")
 	}
 }
+
+func TestBuildRequestEndpointAuthOverridesConfigAuth(t *testing.T) {
+	client := testClient(t)
+	client.Config.Endpoints["token"] = &Endpoint{
+		Method: "POST",
+		Path:   stringPointer("/oauth/token"),
+		Auth: &Auth{
+			Type:     "basic",
+			Username: "client-id",
+			Password: "client-secret",
+		},
+	}
+
+	definition, err := client.buildRequest("token", "", OrderedValues{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "Basic " + base64.StdEncoding.EncodeToString([]byte("client-id:client-secret"))
+	if definition.EffectiveHeaders["Authorization"] != expected {
+		t.Fatalf("unexpected authorization header %q", definition.EffectiveHeaders["Authorization"])
+	}
+}
+
+func stringPointer(value string) *string { return &value }
 
 func TestBuildRequestRejectsMissingPathParameter(t *testing.T) {
 	client := testClient(t)

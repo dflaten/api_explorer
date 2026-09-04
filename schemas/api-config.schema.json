@@ -62,6 +62,7 @@
         "url": {"type": "string"},
         "base_url": {"type": "string"},
         "description": {"type": "string"},
+        "auth": {"$ref": "#/$defs/auth"},
         "headers": {"$ref": "#/$defs/headers"},
         "params": {"$ref": "#/$defs/params"},
         "body": true,
