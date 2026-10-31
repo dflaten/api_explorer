@@ -23,6 +23,9 @@ type options struct {
 	RequestPreview bool
 	Output         string
 	Verbose        bool
+	JSON           bool
+	Fail           bool
+	NoSave         bool
 }
 
 var sensitiveHeaders = map[string]bool{
@@ -63,6 +66,7 @@ be referenced with ${ENV_VAR} placeholders.`,
   apix describe github get_repo
   apix preview github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
   apix run github create_issue --body issue.json --headers '{"X-Trace":"cli"}'
+  apix run github get_repo --json --no-save
   apix collection github smoke.yaml
   apix logs github`,
 		RunE: func(command *cobra.Command, args []string) error {
@@ -220,7 +224,11 @@ func newRunCommand(options *options) *cobra.Command {
 		Long: `Execute one configured endpoint.
 
 The request preview is printed before sending the request. The request/response
-exchange is saved to response.json unless --output is provided.`,
+exchange is saved to response.json unless --output or --no-save is used.
+
+Use --json for automation: it prints only a JSON envelope with the request and
+response, and sends informational messages to stderr. Use --fail to exit
+non-zero when the HTTP status is 400 or higher.`,
 		Example: `  apix run github get_repo --params '{"owner":"octocat","repo":"Hello-World"}'
   apix run github create_issue --body issue.json --output issue-response.json
   apix run ./github.yaml get_repo -v`,
@@ -240,6 +248,9 @@ exchange is saved to response.json unless --output is provided.`,
 	addRequestFlags(command, options)
 	command.Flags().StringVar(&options.Output, "output", "response.json", "request/response output path")
 	command.Flags().BoolVarP(&options.Verbose, "verbose", "v", false, "print response headers")
+	command.Flags().BoolVar(&options.JSON, "json", false, "print a machine-readable JSON response envelope")
+	command.Flags().BoolVar(&options.Fail, "fail", false, "exit non-zero when the HTTP status is 400 or higher")
+	command.Flags().BoolVar(&options.NoSave, "no-save", false, "do not write the request/response output file")
 	return command
 }
 
@@ -369,7 +380,9 @@ func executeResolvedEndpoint(options options, configPath, endpointName string) e
 	if err != nil {
 		return err
 	}
-	printRequestPreview(definition)
+	if !options.JSON {
+		printRequestPreview(definition)
+	}
 	if options.RequestPreview {
 		return nil
 	}
@@ -384,22 +397,36 @@ func executeResolvedEndpoint(options options, configPath, endpointName string) e
 	}
 	responseHeaderMap := responseHeaders(response.Header)
 	success := response.StatusCode >= 200 && response.StatusCode < 400
-	printResponse(response.Status, success, responseHeaderMap, options.Verbose)
-	responseJSON, responseText := emitResponseBody(parsedBody)
-	if err := saveResponse(options.Output, definition, response.Status, response.StatusCode, success, responseHeaderMap, responseJSON, responseText); err != nil {
-		fmt.Printf("\nWarning: failed to write %s: %s\n", options.Output, err)
+	var responseJSON any
+	var responseText *string
+	if options.JSON {
+		responseJSON, responseText = normalizeResponseBody(parsedBody)
+		if err := printMachineJSON(buildResponseEnvelope(definition, response.Status, response.StatusCode, success, responseHeaderMap, responseJSON, responseText)); err != nil {
+			return err
+		}
 	} else {
-		fmt.Printf("\nSaved request and response to %s\n", options.Output)
+		printResponse(response.Status, success, responseHeaderMap, options.Verbose)
+		responseJSON, responseText = emitResponseBody(parsedBody)
+	}
+	if !options.NoSave {
+		if err := saveResponse(options.Output, definition, response.Status, response.StatusCode, success, responseHeaderMap, responseJSON, responseText); err != nil {
+			printNotice(options, "\nWarning: failed to write %s: %s\n", options.Output, err)
+		} else {
+			printNotice(options, "\nSaved request and response to %s\n", options.Output)
+		}
 	}
 	if object, ok := responseJSON.(map[string]any); ok {
 		if token, ok := object["access_token"].(string); ok {
 			envPath := defaultEnvFile()
 			if err := persistAccessToken(configPath, token, envPath); err != nil {
-				fmt.Printf("\nWarning: failed to persist access_token to %s: %s\n", envPath, err)
+				printNotice(options, "\nWarning: failed to persist access_token to %s: %s\n", envPath, err)
 			} else {
-				fmt.Printf("\nUpdated access token in %s.\n", envPath)
+				printNotice(options, "\nUpdated access token in %s.\n", envPath)
 			}
 		}
+	}
+	if options.Fail && response.StatusCode >= 400 {
+		return fmt.Errorf("request failed with HTTP status %s", response.Status)
 	}
 	return nil
 }
@@ -616,12 +643,40 @@ func emitResponseBody(body any) (any, *string) {
 	switch body.(type) {
 	case map[string]any, []any:
 		printIndentedJSON(body, "    ")
-		return body, nil
 	default:
 		text := fmt.Sprint(body)
 		fmt.Println(indentText(text, "    "))
+	}
+	return normalizeResponseBody(body)
+}
+
+func normalizeResponseBody(body any) (any, *string) {
+	switch body.(type) {
+	case nil:
+		return nil, nil
+	case map[string]any, []any:
+		return body, nil
+	default:
+		text := fmt.Sprint(body)
 		return nil, &text
 	}
+}
+
+func printMachineJSON(value any) error {
+	text, err := formatJSON(value)
+	if err != nil {
+		return err
+	}
+	fmt.Print(text)
+	return nil
+}
+
+func printNotice(options options, format string, args ...any) {
+	writer := os.Stdout
+	if options.JSON {
+		writer = os.Stderr
+	}
+	fmt.Fprintf(writer, format, args...)
 }
 
 func printJSON(value any) error {
@@ -754,12 +809,12 @@ func jsonNumberEnd(input string, start int) int {
 	return index
 }
 
-func saveResponse(path string, definition *RequestDefinition, status string, statusCode int, success bool, headers map[string]string, responseJSON any, responseText *string) error {
+func buildResponseEnvelope(definition *RequestDefinition, status string, statusCode int, success bool, headers map[string]string, responseJSON any, responseText *string) map[string]any {
 	body := responseJSON
 	if responseJSON == nil && responseText != nil {
 		body = *responseText
 	}
-	value := map[string]any{
+	return map[string]any{
 		"request": map[string]any{
 			"method":          definition.Method,
 			"url":             definition.FullURL,
@@ -777,6 +832,10 @@ func saveResponse(path string, definition *RequestDefinition, status string, sta
 			"body":        body,
 		},
 	}
+}
+
+func saveResponse(path string, definition *RequestDefinition, status string, statusCode int, success bool, headers map[string]string, responseJSON any, responseText *string) error {
+	value := buildResponseEnvelope(definition, status, statusCode, success, headers, responseJSON, responseText)
 	data, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
@@ -835,7 +894,36 @@ func updateEnvValue(path, key, value string) error {
 		}
 		lines = append(lines, key+"="+value)
 	}
-	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	return writePrivateFile(path, []byte(strings.Join(lines, "\n")+"\n"))
+}
+
+func writePrivateFile(path string, data []byte) error {
+	directory := filepath.Dir(path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(directory, ".env-*")
+	if err != nil {
+		return err
+	}
+	tempPath := file.Name()
+	defer os.Remove(tempPath)
+	if err := file.Chmod(0o600); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
 }
 
 func writeConfigTemplate(path string) error {
