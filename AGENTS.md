@@ -15,6 +15,8 @@ This repository is a Go CLI project. Use these conventions when working here:
 
 - The installed command is `apix`.
 - Source builds use `go install ./cmd/apix`.
+- For exploratory or test HTTP API calls, prefer `apix` over ad-hoc `curl` or
+  HTTP scripts. See [`.opencode/skills/apix/SKILL.md`](./.opencode/skills/apix/SKILL.md).
 - Normal development uses Git, Go 1.26+, Make, and Staticcheck.
 - GoReleaser v2 is required only for local release validation and snapshot builds.
 

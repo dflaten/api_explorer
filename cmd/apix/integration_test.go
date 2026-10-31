@@ -454,6 +454,70 @@ func TestCLIResponseFilesAndTokenPersistence(t *testing.T) {
 	if string(data) != "PERSISTED_TOKEN=new-token\nOTHER=value\n" {
 		t.Fatalf("unexpected env file: %q", data)
 	}
+	info, err := os.Stat(filepath.Join(configHome, ".env"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("env file permissions are %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestCLIJSONFailAndNoSave(t *testing.T) {
+	server, received := compatibilityServer(t)
+	directory := t.TempDir()
+
+	result := runCLI(t, directory, compatibilityEnv(server.URL), "run", fixturePath(t, "api.yaml"), "health", "--json", "--no-save")
+	if result.exitCode != 0 {
+		t.Fatal(result.stderr)
+	}
+	<-received
+	var envelope map[string]any
+	if err := json.Unmarshal([]byte(result.stdout), &envelope); err != nil {
+		t.Fatalf("JSON output was not a single envelope: %v\n%s", err, result.stdout)
+	}
+	response, ok := envelope["response"].(map[string]any)
+	if !ok {
+		t.Fatalf("JSON output missing response object: %#v", envelope)
+	}
+	if response["status_code"] != float64(200) || response["success"] != true {
+		t.Fatalf("unexpected response envelope: %#v", response)
+	}
+	if strings.Contains(result.stdout, "REQUEST") || strings.Contains(result.stdout, "Saved request") {
+		t.Fatalf("JSON output contained human-readable text:\n%s", result.stdout)
+	}
+	if _, err := os.Stat(filepath.Join(directory, "response.json")); !os.IsNotExist(err) {
+		t.Fatalf("--no-save still wrote response.json")
+	}
+
+	result = runCLI(t, directory, compatibilityEnv(server.URL), "run", fixturePath(t, "api.yaml"), "missing", "--no-save")
+	if result.exitCode != 0 {
+		t.Fatalf("missing endpoint without --fail exited %d: %s", result.exitCode, result.stderr)
+	}
+	<-received
+
+	result = runCLI(t, directory, compatibilityEnv(server.URL), "run", fixturePath(t, "api.yaml"), "missing", "--fail", "--no-save")
+	if result.exitCode == 0 {
+		t.Fatalf("--fail did not fail on HTTP 404: %#v", result)
+	}
+	<-received
+	if !strings.Contains(result.stdout, "Status: 404") || !strings.Contains(result.stderr, "HTTP status 404") {
+		t.Fatalf("unexpected --fail output: %#v", result)
+	}
+
+	result = runCLI(t, directory, compatibilityEnv(server.URL), "run", fixturePath(t, "api.yaml"), "missing", "--json", "--fail", "--no-save")
+	if result.exitCode == 0 {
+		t.Fatalf("--json --fail did not fail on HTTP 404: %#v", result)
+	}
+	<-received
+	envelope = nil
+	if err := json.Unmarshal([]byte(result.stdout), &envelope); err != nil {
+		t.Fatalf("--json --fail stdout was not valid JSON: %v\n%s", err, result.stdout)
+	}
+	response = envelope["response"].(map[string]any)
+	if response["status_code"] != float64(404) || response["success"] != false {
+		t.Fatalf("unexpected failed response envelope: %#v", response)
+	}
 }
 
 func TestCLIDotenvDiscoveryAndErrors(t *testing.T) {
