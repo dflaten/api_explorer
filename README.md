@@ -57,6 +57,7 @@ Add local secrets:
 
 ```bash
 mkdir -p ~/.config/apix
+install -m 600 /dev/null ~/.config/apix/.env
 printf 'GITHUB_TOKEN=your_github_token_here\n' > ~/.config/apix/.env
 ```
 
@@ -142,6 +143,55 @@ default bearer token.
 | `apix run API ENDPOINT --output out.json` | Save the request/response exchange to a custom file |
 
 Run `apix --help` for all flags and examples.
+
+## Automation and Agent Use
+
+`apix run` has a machine-readable mode for scripts and coding agents:
+
+```bash
+apix run github get_repo --json --no-save
+apix run github health --fail --no-save
+apix run github create_issue --body issue.json --json --fail --no-save
+```
+
+- `--json` prints only a JSON envelope with the request and response. Informational
+  messages go to stderr so stdout can be parsed directly.
+- `--no-save` skips the default `response.json` output file.
+- `--fail` exits non-zero when the HTTP status is 400 or higher.
+
+This repository also ships an OpenCode skill at
+[`.opencode/skills/apix/SKILL.md`](./.opencode/skills/apix/SKILL.md) that tells
+coding agents to prefer `apix` over ad-hoc HTTP tooling and documents the
+recommended workflow.
+
+## Git Worktrees
+
+By default, `apix` keeps configs, credentials, and logs under `~/.config/apix`.
+That location is per-user, not per-repository, so every git worktree and every
+agent running as the same OS user shares the same aliases and credentials. An
+agent can authenticate once and a developer can rerun the same `apix` command
+from another worktree without copying secrets.
+
+An agent running with a different `HOME` (for example in a container or sandbox)
+will not see this shared state; mount or copy `~/.config/apix` if those agents
+need the same credentials.
+
+A few things to keep in mind:
+
+- Put shared secrets in `~/.config/apix/.env`. `apix` creates or rewrites that
+  file with mode `0600`. Variables already exported in the shell take precedence
+  over the file, so an exported token can make a developer use different
+  credentials than the agent did.
+- Use global aliases (`apix list github`) for APIs shared across worktrees.
+  Explicit paths (`apix run ./configs/github.yaml ...`) are resolved from the
+  current worktree, so they can differ by branch.
+- Request logs are grouped by config file name. Two worktrees using same-named
+  explicit configs share a log directory; use distinct file names or aliases if
+  you need separate histories.
+- Avoid using the same environment variable name for different environments
+  across worktrees. `access_token` persistence rewrites the shared `.env`, so a
+  staging token refresh can overwrite a production token stored under the same
+  name.
 
 ## Documentation
 
